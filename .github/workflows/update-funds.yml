@@ -1,0 +1,44 @@
+name: Update fund data (SEC)
+
+# ดึงข้อมูลกองทุนทั้งตลาดจาก ก.ล.ต. เดือนละครั้ง (วันที่ 2 เวลา 02:17 น. ไทย)
+# กดรันเองได้ที่แท็บ Actions → Update fund data (SEC) → Run workflow
+on:
+  schedule:
+    - cron: "17 19 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-funds
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Fetch funds from SEC Open Data
+        env:
+          SEC_API_KEY: ${{ secrets.SEC_API_KEY }}
+        run: node scripts/fetch-funds.mjs
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "ข้อมูลไม่เปลี่ยน ไม่ต้อง commit"
+            exit 0
+          fi
+          git commit -m "Update fund data from SEC ($(date -u +%Y-%m-%d))"
+          git pull --rebase --autostash
+          git push

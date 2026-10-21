@@ -148,6 +148,27 @@ input[type=checkbox]{width:20px;height:20px;padding:0;accent-color:var(--accent)
 .act .an{font-size:13.5px;font-weight:800;}
 .act .ar{font-size:12.5px;color:var(--text2);margin-top:2px;}
 
+/* fund library */
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0;}
+.fgrid select{padding:10px 11px;font-size:13.5px;}
+.frow{display:flex;align-items:center;gap:11px;padding:12px 0;border-top:1px solid var(--border);cursor:pointer;}
+.frow:first-child{border-top:none;}
+.ret{display:grid;grid-template-columns:repeat(auto-fit,minmax(64px,1fr));gap:6px;margin:10px 0;}
+.ret div{background:var(--bg3);border-radius:10px;padding:8px 4px;text-align:center;}
+.ret .rl{font-size:11px;color:var(--text2);font-weight:700;}
+.ret .rv2{font-size:15px;font-weight:900;}
+details{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:10px 14px;margin-top:10px;}
+details summary{font-size:13.5px;font-weight:800;cursor:pointer;list-style:none;}
+details summary::-webkit-details-marker{display:none;}
+details summary::after{content:" ▾";color:var(--text3);}
+details[open] summary::after{content:" ▴";}
+.sug{background:var(--card);border:1px solid var(--border);border-radius:12px;margin:-6px 0 12px;overflow:hidden;}
+.sug div{padding:10px 12px;border-top:1px solid var(--border);cursor:pointer;font-size:13px;}
+.sug div:first-child{border-top:none;}
+.agent{display:flex;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--border);font-size:13px;}
+.agent:first-child{border-top:none;}
+.link{color:var(--accent2);font-weight:700;cursor:pointer;text-decoration:none;}
+
 /* nav */
 .nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:440px;background:var(--glass);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-top:1px solid var(--border);display:flex;padding:8px 8px calc(8px + env(safe-area-inset-bottom));z-index:30;}
 .nav button{flex:1;background:none;border:none;color:var(--text3);cursor:pointer;padding:5px 2px;display:flex;flex-direction:column;align-items:center;gap:2px;}
@@ -231,7 +252,7 @@ const K={
   holdings:"fp2_holdings",info:"fp2_fundinfo",settings:"fp2_settings",usage:"fp2_usage",
   check:"fp2_check",chat:"fp2_chat",starter:"fp2_starter",migrated:"fp2_migrated"
 };
-const DEFAULT_SETTINGS={theme:"dark",budget:200,reviewMonths:6,lastReview:null,lossAlert:10,taxRate:10,chatSearch:false,checkSearch:true};
+const DEFAULT_SETTINGS={theme:"dark",budget:200,reviewMonths:6,lastReview:null,lossAlert:10,taxRate:10,chatSearch:false,checkSearch:false,myBrokers:[]};
 const getSettings=()=>({...DEFAULT_SETTINGS,...LS.get(K.settings,{})});
 const setSettings=p=>LS.set(K.settings,{...getSettings(),...p});
 
@@ -374,7 +395,55 @@ const errBox=e=>`<div class="ai"><div class="mdx">${esc(aiError(e))}</div></div>
 const getHoldings=()=>LS.get(K.holdings,[]);
 const setHoldings=h=>LS.set(K.holdings,h);
 const getInfo=()=>LS.get(K.info,{});
-const infoOf=code=>getInfo()[String(code||"").toUpperCase()]||null;
+const infoOf=code=>dbInfo(code)||getInfo()[String(code||"").toUpperCase()]||null;
+
+/* ════════════ คลังกองทุน (ข้อมูล ก.ล.ต. ใน data/funds.json) ════════════ */
+let FDB=null, fdbState="idle";
+async function loadFundDB(){
+  if(fdbState==="ok"||fdbState==="loading")return FDB;
+  fdbState="loading";
+  try{
+    const r=await fetch("data/funds.json",{cache:"no-cache"});
+    if(!r.ok)throw new Error(r.status);
+    const j=await r.json();
+    const byKey=new Map(), cnt=new Array(j.agents.length).fill(0);
+    j.funds.forEach((f,i)=>{
+      f.i=i;f.r=f.r||{};f.cls=f.cls||[];f.sa=f.sa||[];
+      f.s=(f.c+" "+f.th+" "+f.en+" "+f.amc+" "+f.cls.join(" ")).toLowerCase();
+      [f.c,...f.cls].forEach(k=>{if(k&&!byKey.has(k.toUpperCase()))byKey.set(k.toUpperCase(),f);});
+      f.sa.forEach(a=>cnt[a]++);
+    });
+    FDB={updated:j.updated,agents:j.agents,agentCount:cnt,funds:j.funds,byKey};
+    fdbState="ok";
+  }catch(e){fdbState="missing";}
+  if(["funds","settings"].includes(state.tab)&&!$("overlay"))render();
+  return FDB;
+}
+const dbFund=code=>FDB?FDB.byKey.get(String(code||"").trim().toUpperCase())||null:null;
+const fAsset=f=>ASSET[f.a]?f.a:"mixed";
+const riskTxt=r=>r?(r>8?"8+":String(Math.floor(r))):"-";
+const pctN=v=>v==null?"-":(v>0?"+":"")+v.toFixed(1)+"%";
+function mineIdxSet(){const m=getSettings().myBrokers||[];return FDB?new Set(m.map(n=>FDB.agents.indexOf(n)).filter(i=>i>=0)):new Set();}
+function myAgentsFor(f){const s=mineIdxSet();return f.sa.filter(i=>s.has(i)).map(i=>FDB.agents[i]);}
+function dbInfo(code){
+  const f=dbFund(code);if(!f)return null;
+  return {found:true,code:f.c,name:f.th||f.en,amc:f.amc,asset:fAsset(f),risk:f.rs?riskTxt(f.rs):null,fee:f.ter??f.mf??null,return1y:f.r["1y"]??null,taxType:f.tax,asOf:f.perfAt?fmtDate(f.perfAt):"",summary:f.pol?"นโยบาย: "+f.pol:"",fetchedAt:(FDB.updated||"").slice(0,10),src:"ก.ล.ต."};
+}
+function fundLine(f){
+  const mine=myAgentsFor(f);
+  return `${f.c} (${f.th||f.en}) · บลจ.${f.amc} · ${assetLabel(f.a)}${f.pol?" ("+f.pol+")":""} · เสี่ยง ${riskTxt(f.rs)} · ค่าใช้จ่ายรวม ${f.ter??"-"}%/ปี · ผลตอบแทน 1ปี ${pctN(f.r["1y"])} 3ปี ${pctN(f.r["3y"])} 5ปี ${pctN(f.r["5y"])}${f.perfAt?" (factsheet "+f.perfAt+")":""}${f.tax?" · กองลดหย่อน "+f.tax:""} · ผู้ขาย ${f.sa.length} ราย${(getSettings().myBrokers||[]).length?(mine.length?" · ซื้อผ่านช่องทางผู้ใช้ได้ ("+mine.slice(0,2).join(", ")+")":" · ไม่มีขายผ่านช่องทางของผู้ใช้"):""}`;
+}
+/* รายชื่อกองตัวเลือกจากคลัง ให้ AI เลือก (ไม่ต้องค้นเว็บ) */
+function candidateList(assets,perClass=7){
+  if(!FDB)return "";
+  const mine=mineIdxSet();
+  return assets.map(a=>{
+    let L=FDB.funds.filter(f=>f.a===a&&!f.tax&&f.ter!=null&&f.r["1y"]!=null);
+    if(mine.size){const m=L.filter(f=>f.sa.some(i=>mine.has(i)));if(m.length>=3)L=m;}
+    L.sort((x,y)=>x.ter-y.ter);
+    return `[${assetLabel(a)}]\n`+L.slice(0,perClass).map(f=>"- "+fundLine(f)).join("\n");
+  }).join("\n");
+}
 
 function computePortfolio(){
   const items=getHoldings().map(h=>{const pl=h.value-h.invested;return {...h,pl,plPct:h.invested>0?pl/h.invested*100:0};});
@@ -434,13 +503,16 @@ function portfolioContext(){
   if(!port.items.length)return s+"[พอร์ต] ยังไม่มีกองทุน\n";
   s+=`\n[พอร์ตปัจจุบัน] มูลค่า ${baht(port.totalValue)} | เงินลงทุน ${baht(port.totalInv)} | กำไร/ขาดทุน ${bahtS(port.totalPL)} (${pct(port.totalPLPct)})\n`;
   port.items.forEach(i=>{
-    const f=info[i.code];
+    const db=dbFund(i.code), f=info[i.code];
     s+=`- ${i.code}${i.name?" ("+i.name+")":""} · ${assetLabel(i.asset)} · ลงทุน ${baht(i.invested)} · มูลค่า ${baht(i.value)} (${pct(i.plPct)}) · อัปเดต ${i.updatedAt||"-"}`;
-    if(f)s+=` · ข้อมูลกอง: เสี่ยง ${f.risk??"-"}, ค่าธรรมเนียม ${f.fee??"-"}%, ผลตอบแทน1ปี ${f.return1y??"-"}% (ณ ${f.asOf||f.fetchedAt})`;
+    if(db)s+=`\n    ข้อมูล ก.ล.ต.: ${fundLine(db)}`;
+    else if(f)s+=` · ข้อมูลกอง: เสี่ยง ${f.risk??"-"}, ค่าธรรมเนียม ${f.fee??"-"}%, ผลตอบแทน1ปี ${f.return1y??"-"}% (ณ ${f.asOf||f.fetchedAt})`;
     s+="\n";
   });
   s+="\n[เทียบเป้าหมาย (กองผสมนับเป็นหุ้นไทย/ตราสารหนี้อย่างละครึ่ง) และจำนวนเงินที่ต้องปรับ]\n";
   rebalanceRows().forEach(r=>{s+=`- ${assetLabel(r.asset)}: ${Math.round(r.curPct)}% (เป้า ${r.target}%) → ${r.diff>=0?"เพิ่ม":"ลด"} ${baht(Math.abs(r.diff))}\n`;});
+  const mb=getSettings().myBrokers||[];
+  if(mb.length)s+="\n[ช่องทางซื้อกองทุนที่ผู้ใช้มีบัญชี] "+mb.join(", ")+"\n";
   const goals=LS.get(K.goals,[]);
   if(goals.length)s+="\n[เป้าหมายการออม] "+goals.map(g=>`${g.name} ${baht(g.target)} ใน ${g.years} ปี`).join(", ")+"\n";
   return s;
@@ -469,8 +541,8 @@ function migrate(){
 
 /* ════════════ APP SHELL ════════════ */
 let state={tab:"home",chatBusy:false,rbExtra:0};
-const TABS=[["home","🏠","พอร์ต"],["ai","🤖","ถาม AI"],["plan","🎯","วางแผน"],["settings","⚙️","ตั้งค่า"]];
-const TITLES={home:["พอร์ตของฉัน","ภาพรวมและการปรับสมดุล"],ai:["ที่ปรึกษา AI","ถามได้ทุกเรื่องการลงทุน"],plan:["วางแผน","เป้าหมาย · DCA · ภาษี"],settings:["ตั้งค่า","API · ค่าใช้จ่าย · ข้อมูล"]};
+const TABS=[["home","🏠","พอร์ต"],["funds","🔍","กองทุน"],["ai","🤖","ถาม AI"],["plan","🎯","วางแผน"],["settings","⚙️","ตั้งค่า"]];
+const TITLES={home:["พอร์ตของฉัน","ภาพรวมและการปรับสมดุล"],funds:["คลังกองทุน","ข้อมูลทั้งตลาดจาก ก.ล.ต."],ai:["ที่ปรึกษา AI","ถามได้ทุกเรื่องการลงทุน"],plan:["วางแผน","เป้าหมาย · DCA · ภาษี"],settings:["ตั้งค่า","API · ค่าใช้จ่าย · ข้อมูล"]};
 
 function applyTheme(){
   const t=getSettings().theme;
@@ -487,10 +559,11 @@ function render(){
       ${state.tab==="ai"?`<button class="iconbtn" title="ล้างแชท" onclick="clearChat()">🗑️</button>`:""}
       <button class="iconbtn" title="สลับธีม" onclick="toggleTheme()">${getSettings().theme==="light"?"🌙":"☀️"}</button>
     </div>
-    ${state.tab==="ai"?viewAI():`<div class="scroll">${state.tab==="home"?viewHome():state.tab==="plan"?viewPlan():viewSettings()}</div>`}
+    ${state.tab==="ai"?viewAI():`<div class="scroll">${state.tab==="home"?viewHome():state.tab==="funds"?viewFunds():state.tab==="plan"?viewPlan():viewSettings()}</div>`}
     <div class="nav">${TABS.map(([id,ic,lb])=>`<button class="${state.tab===id?"on":""}" onclick="go('${id}')"><span class="ni">${ic}</span><span class="nl">${lb}</span></button>`).join("")}</div>`;
   if(state.tab==="ai")bindAI();
   if(state.tab==="home")bindHome();
+  if(state.tab==="funds")bindFunds();
 }
 function go(tab){state.tab=tab;render();window.scrollTo(0,0);}
 function toggleTheme(){setSettings({theme:getSettings().theme==="light"?"dark":"light"});render();}
@@ -587,7 +660,7 @@ function viewEmptyHome(){
       <div class="es">ยังไม่รู้จะเริ่มกองไหน? ให้ AI ค้นกองทุนจริงที่เหมาะกับโปรไฟล์ <b>${profileLabel()}</b> ของคุณ<br>หรือถ้ามีกองทุนอยู่แล้ว แคปหน้าจอพอร์ตจากแอปธนาคารมาให้ AI อ่านได้เลย</div>
     </div>
     <button class="btn pri full" onclick="suggestStarter()">🤖 ให้ AI แนะนำพอร์ตเริ่มต้น</button>
-    <div class="cost" style="text-align:center;margin:5px 0 10px">ค้นข้อมูลกองทุนจริงจากเว็บ ≈ ฿3–6</div>
+    <div class="cost" style="text-align:center;margin:5px 0 10px">${fdbState==="ok"?"เลือกจากคลังกองทุน ก.ล.ต. ≈ ฿0.5–1":"ค้นข้อมูลกองทุนจริงจากเว็บ ≈ ฿3–6"}</div>
     <div class="row"><button class="btn gho flex" onclick="pickImage()">📸 นำเข้าจากภาพหน้าจอ</button><button class="btn gho flex" onclick="showHoldingForm()">＋ เพิ่มเอง</button></div>
     <div id="starter-out" style="margin-top:14px">${st?viewStarter(st):""}</div>`;
 }
@@ -650,7 +723,7 @@ async function runCheckup(){
 {"verdict":"ดี|พอใช้|ควรปรับ","summary":"สรุป 2-3 ประโยค","strengths":["สูงสุด 3 ข้อ"],"concerns":["สูงสุด 3 ข้อ"],"actions":[{"type":"ซื้อเพิ่ม|ลดสัดส่วน|สับเปลี่ยน|ถือต่อ","target":"รหัสกองทุนหรือประเภทสินทรัพย์ (ถ้าแนะนำกองใหม่ให้ใส่รหัสกองจริง)","amount":จำนวนบาทหรือnull,"reason":"เหตุผล 1 ประโยค"}],"next":"สิ่งที่ควรติดตามก่อนรอบตรวจถัดไป 1 ประโยค"}
 actions ไม่เกิน 4 ข้อ จำนวนเงินให้สอดคล้องกับแผนปรับสมดุลที่ให้มา`;
   try{
-    const {text,cost}=await callClaude({system:sys,max_tokens:search?2500:1500,search,messages:[{role:"user",content:"ช่วยตรวจสุขภาพพอร์ตของฉัน\n\n"+portfolioContext()}]});
+    const {text,cost}=await callClaude({system:sys,max_tokens:search?2500:1500,search,messages:[{role:"user",content:"ช่วยตรวจสุขภาพพอร์ตของฉัน\n\n"+portfolioContext()+checkupCandidates()}]});
     let chk={date:todayStr(),searched:search,cost};
     try{chk.result=extractJSON(text);}catch{chk.raw=text;}
     LS.set(K.check,chk);
@@ -661,20 +734,32 @@ actions ไม่เกิน 4 ข้อ จำนวนเงินให้�
   }catch(e){out.innerHTML=errBox(e);btn.disabled=false;}
 }
 
+/* กองที่ควรพิจารณาเติม: เลือกจากคลังสำหรับประเภทที่ยังขาด */
+function checkupCandidates(){
+  if(!FDB)return "";
+  const under=rebalanceRows().filter(r=>r.diff>Math.max(1000,computePortfolio().totalValue*0.03)).map(r=>r.asset).filter(a=>ASSET[a]);
+  if(!under.length)return "";
+  return "\n\n[กองทุนจากคลัง ก.ล.ต. ที่อาจใช้เติมส่วนที่ขาด — ถ้าแนะนำกองใหม่ ให้เลือกจากรายชื่อนี้เป็นหลัก]\n"+candidateList(under,5);
+}
+
 /* ── พอร์ตเริ่มต้นสำหรับมือใหม่ ── */
 async function suggestStarter(){
   const out=$("starter-out");
-  out.innerHTML=loadingBox("กำลังค้นกองทุนที่เหมาะกับคุณ (อาจใช้เวลา 30–60 วินาที)...");
+  await loadFundDB();
+  const useDB=!!FDB;
+  out.innerHTML=loadingBox(useDB?"กำลังเลือกกองทุนจากคลัง ก.ล.ต....":"กำลังค้นกองทุนที่เหมาะกับคุณ (อาจใช้เวลา 30–60 วินาที)...");
   const tgt=targetAlloc();
-  const sys=ADVISOR_BASE+SEARCH_HINT+`
+  const sys=ADVISOR_BASE+(useDB?"":SEARCH_HINT)+`
 
-งาน: จัดพอร์ตเริ่มต้นสำหรับมือใหม่ด้วยกองทุนรวมไทยที่มีอยู่จริงและเปิดขายอยู่ 3-5 กอง ให้สอดคล้องกับสัดส่วนเป้าหมาย เน้นกองค่าธรรมเนียมต่ำ เข้าใจง่าย ซื้อได้ทั่วไป (เช่น กองดัชนี) ค้นเพื่อยืนยันรหัสกองก่อนแนะนำ
+งาน: จัดพอร์ตเริ่มต้นสำหรับมือใหม่ด้วยกองทุนรวมไทยที่มีอยู่จริงและเปิดขายอยู่ 3-5 กอง ให้สอดคล้องกับสัดส่วนเป้าหมาย เน้นกองค่าธรรมเนียมต่ำ เข้าใจง่าย ซื้อได้ทั่วไป (เช่น กองดัชนี) ${useDB?"เลือกจากรายชื่อกองทุนที่ให้มาเท่านั้น (ข้อมูลจาก ก.ล.ต.) ใช้รหัสกองตามรายชื่อเป๊ะ และให้น้ำหนักกับกองที่ซื้อผ่านช่องทางของผู้ใช้ได้":"ค้นเพื่อยืนยันรหัสกองก่อนแนะนำ"}
 asset ต้องเป็นหนึ่งใน: ${ASSET_GUIDE}
 ตอบเป็น JSON ภายในแท็ก <JSON></JSON> เท่านั้น:
 {"intro":"แนวคิดของพอร์ตนี้ 1-2 ประโยค","funds":[{"code":"รหัสกอง","name":"ชื่อกอง","amc":"บลจ.","asset":"คีย์ประเภท","weight":เปอร์เซ็นต์,"reason":"เหตุผล 1 ประโยค"}],"note":"ข้อควรระวัง 1 ประโยค"}
 ผลรวม weight = 100`;
   try{
-    const {text,cost}=await callClaude({system:sys,max_tokens:2500,search:true,messages:[{role:"user",content:`โปรไฟล์ความเสี่ยง: ${profileLabel()}\nสัดส่วนเป้าหมาย: ${Object.keys(tgt).map(k=>assetLabel(k)+" "+tgt[k]+"%").join(", ")}\n\nแนะนำพอร์ตเริ่มต้นให้หน่อย`}]});
+    const mb=getSettings().myBrokers||[];
+    const cand=useDB?`\n\n[ช่องทางที่ผู้ใช้มีบัญชี] ${mb.length?mb.join(", "):"ยังไม่ได้ระบุ"}\n\n[กองทุนให้เลือก (ค่าใช้จ่ายต่ำสุดในแต่ละประเภท)]\n`+candidateList(Object.keys(tgt)):"";
+    const {text,cost}=await callClaude({system:sys,max_tokens:2500,search:!useDB,messages:[{role:"user",content:`โปรไฟล์ความเสี่ยง: ${profileLabel()}\nสัดส่วนเป้าหมาย: ${Object.keys(tgt).map(k=>assetLabel(k)+" "+tgt[k]+"%").join(", ")}${cand}\n\nแนะนำพอร์ตเริ่มต้นให้หน่อย`}]});
     let plan;try{plan=extractJSON(text);}catch{out.innerHTML=`<div class="ai"><div class="mdx">${md(text)}</div><div class="cost">${costTxt(cost)}</div></div>`;return;}
     plan.cost=cost;plan.date=todayStr();
     LS.set(K.starter,plan);
@@ -697,6 +782,116 @@ function viewStarter(p){
 }
 function addFromStarter(i){const p=LS.get(K.starter,null);if(!p)return;const f=p.funds[i];showHoldingForm(null,{code:f.code,name:f.name,asset:f.asset});}
 
+/* ════════════ FUNDS TAB (คลังกองทุน) ════════════ */
+const FSTATE={q:"",a:"all",r:"all",t:"all",sort:"r1y",mine:false,limit:40};
+function viewFunds(){
+  if(fdbState!=="ok"&&fdbState!=="missing"){loadFundDB();return loadingBox("กำลังโหลดคลังกองทุน...");}
+  if(fdbState==="missing")return `<div class="empty"><div class="ei">🗂️</div><div class="et">ยังไม่มีคลังกองทุน</div>
+    <div class="es">ข้อมูลจะมาหลังจากระบบดึงข้อมูลจาก ก.ล.ต. รอบแรก (GitHub Actions) เสร็จ ระหว่างนี้ใช้ปุ่ม 🔎 ค้นข้อมูล ในหน้าเพิ่มกองทุน หรือถาม AI ได้</div></div>
+    <button class="btn gho full" onclick="fdbState='idle';render()">🔄 ลองโหลดอีกครั้ง</button>`;
+  const mb=getSettings().myBrokers||[];
+  const sel=(id,cur,opts)=>`<select id="${id}">${opts.map(([v,l])=>`<option value="${v}" ${cur===v?"selected":""}>${l}</option>`).join("")}</select>`;
+  return `<input id="fq" type="search" placeholder="🔍 ค้นรหัส ชื่อกอง หรือ บลจ." value="${esc(FSTATE.q)}" autocomplete="off">
+    <div class="fgrid">
+      ${sel("fa",FSTATE.a,[["all","ทุกประเภท"],...ASSET_KEYS.map(k=>[k,ASSET[k].label]),["other","อื่นๆ"]])}
+      ${sel("fr",FSTATE.r,[["all","ทุกระดับเสี่ยง"],["low","เสี่ยงต่ำ (1–3)"],["mid","ปานกลาง (4–5)"],["high","สูง (6–8+)"]])}
+      ${sel("ft",FSTATE.t,[["all","กองทั่วไป+ลดหย่อน"],["none","เฉพาะกองทั่วไป"],["SSF","SSF"],["RMF","RMF"],["ThaiESG","ThaiESG"],["ThaiESGX","ThaiESGX"]])}
+      ${sel("fs",FSTATE.sort,[["r1y","ผลตอบแทน 1 ปี สูงสุด"],["r3y","ผลตอบแทน 3 ปี สูงสุด"],["r5y","ผลตอบแทน 5 ปี สูงสุด"],["ter","ค่าใช้จ่ายต่ำสุด"],["name","ชื่อ ก–ฮ / A–Z"]])}
+    </div>
+    ${mb.length?`<label class="check" style="margin-bottom:10px"><input type="checkbox" id="fmine" ${FSTATE.mine?"checked":""}> เฉพาะกองที่ซื้อผ่านช่องทางของฉันได้ (${mb.length} ช่องทาง)</label>`
+      :`<div class="small" style="margin-bottom:10px">💡 บอกว่าคุณมีบัญชีกับธนาคาร/โบรกเกอร์ไหน แล้วกรองเฉพาะกองที่ซื้อได้ · <span class="link" onclick="showBrokerPicker()">ตั้งค่าช่องทางของฉัน</span></div>`}
+    <div id="flist">${renderFundList()}</div>
+    <div class="small" style="text-align:center;margin-top:12px">ข้อมูลจาก ก.ล.ต. อัปเดต ${fmtDate((FDB.updated||"").slice(0,10))} · ${FDB.funds.length.toLocaleString()} กอง · ผลตอบแทนในอดีตไม่ได้รับประกันอนาคต</div>`;
+}
+function filterFunds(){
+  const q=FSTATE.q.trim().toLowerCase(), mine=FSTATE.mine?mineIdxSet():null;
+  let L=FDB.funds.filter(f=>{
+    if(q&&!f.s.includes(q))return false;
+    if(FSTATE.a!=="all"&&f.a!==FSTATE.a)return false;
+    if(FSTATE.r!=="all"){const r=f.rs||0;if(FSTATE.r==="low"&&!(r>=1&&r<=3))return false;if(FSTATE.r==="mid"&&!(r>=4&&r<=5))return false;if(FSTATE.r==="high"&&r<6)return false;}
+    if(FSTATE.t==="none"&&f.tax)return false;
+    if(FSTATE.t!=="all"&&FSTATE.t!=="none"&&f.tax!==FSTATE.t)return false;
+    if(mine&&mine.size&&!f.sa.some(i=>mine.has(i)))return false;
+    return true;
+  });
+  const key={r1y:"1y",r3y:"3y",r5y:"5y"}[FSTATE.sort];
+  if(key)L.sort((a,b)=>(b.r[key]??-1e9)-(a.r[key]??-1e9));
+  else if(FSTATE.sort==="ter")L.sort((a,b)=>(a.ter??1e9)-(b.ter??1e9));
+  else L.sort((a,b)=>a.c.localeCompare(b.c));
+  if(q){const ex=L.filter(f=>f.c.toLowerCase()===q||f.cls.some(c=>c.toLowerCase()===q));if(ex.length)L=ex.concat(L.filter(f=>!ex.includes(f)));}
+  return L;
+}
+function renderFundList(){
+  const L=filterFunds(), mine=mineIdxSet(), key={r1y:"1y",r3y:"3y",r5y:"5y"}[FSTATE.sort]||"1y";
+  if(!L.length)return `<div class="card muted" style="text-align:center">ไม่พบกองทุนตามเงื่อนไขนี้</div>`;
+  return `<div class="small" style="margin-bottom:6px">พบ ${L.length.toLocaleString()} กอง</div>
+    <div class="card" style="padding:2px 14px">${L.slice(0,FSTATE.limit).map(f=>{
+      const v=f.r[key], canBuy=mine.size&&f.sa.some(i=>mine.has(i));
+      return `<div class="frow" onclick="showFundDB(${f.i})">
+        <div class="fic" style="background:${assetColor(f.a)}26;color:${assetColor(f.a)}">${esc((f.c||"?")[0])}</div>
+        <div style="flex:1;min-width:0"><div class="hn">${esc(f.c)} ${canBuy?'<span class="tag g">✓ ช่องทางของฉัน</span>':""}</div>
+          <div class="hs" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.th||f.en)}</div>
+          <div style="margin-top:4px;display:flex;gap:5px;flex-wrap:wrap"><span class="tag">${assetLabel(f.a)}</span>${f.rs?`<span class="tag ${f.rs<=3?"g":f.rs<=5?"a":"r"}">เสี่ยง ${riskTxt(f.rs)}</span>`:""}${f.tax?`<span class="tag t">${f.tax}</span>`:""}</div></div>
+        <div style="text-align:right;flex-shrink:0"><div class="hv ${v==null?"":v>=0?"up":"down"}">${pctN(v)}</div><div class="hs">${key.replace("y"," ปี")}</div>${f.ter!=null?`<div class="hs">ค่าใช้จ่าย ${f.ter}%</div>`:""}</div>
+      </div>`;}).join("")}</div>
+    ${L.length>FSTATE.limit?`<button class="btn gho full" style="margin-top:8px" onclick="FSTATE.limit+=40;$('flist').innerHTML=renderFundList()">แสดงเพิ่ม (${(L.length-FSTATE.limit).toLocaleString()} กอง)</button>`:""}`;
+}
+function bindFunds(){
+  const q=$("fq");if(!q)return;
+  let t;
+  q.oninput=()=>{clearTimeout(t);t=setTimeout(()=>{FSTATE.q=q.value;FSTATE.limit=40;$("flist").innerHTML=renderFundList();},180);};
+  [["fa","a"],["fr","r"],["ft","t"],["fs","sort"]].forEach(([id,k])=>{$(id).onchange=e=>{FSTATE[k]=e.target.value;FSTATE.limit=40;$("flist").innerHTML=renderFundList();};});
+  const m=$("fmine");if(m)m.onchange=()=>{FSTATE.mine=m.checked;FSTATE.limit=40;$("flist").innerHTML=renderFundList();};
+}
+const PERIOD_ORDER=["3m","6m","ytd","1y","3y","5y","10y","si"];
+const PERIOD_LABEL={"3m":"3 เดือน","6m":"6 เดือน","ytd":"ต้นปี","1y":"1 ปี","3y":"3 ปี","5y":"5 ปี","10y":"10 ปี","si":"ตั้งแต่จัดตั้ง"};
+function showFundDB(i){
+  const f=FDB.funds[i];if(!f)return;
+  const mineNames=myAgentsFor(f), held=getHoldings().find(h=>h.code===f.c||f.cls.includes(h.code));
+  const rets=PERIOD_ORDER.filter(k=>f.r[k]!=null);
+  const feeRows=Object.entries(f.fee||{})[0];
+  showSheet(`<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+      <div class="fic" style="width:48px;height:48px;font-size:18px;background:${assetColor(f.a)}26;color:${assetColor(f.a)}">${esc((f.c||"?")[0])}</div>
+      <div style="flex:1;min-width:0"><div style="font-size:19px;font-weight:900;word-break:break-all">${esc(f.c)}</div><div class="small">${esc(f.th||f.en)}</div></div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="tag">${assetLabel(f.a)}</span>${f.rs?`<span class="tag ${f.rs<=3?"g":f.rs<=5?"a":"r"}">ความเสี่ยงระดับ ${riskTxt(f.rs)}</span>`:""}${f.tax?`<span class="tag t">ลดหย่อนภาษี ${f.tax}</span>`:""}${held?'<span class="tag p">ในพอร์ตของคุณ</span>':""}</div>
+    ${rets.length?`<div class="ret">${rets.map(k=>`<div><div class="rl">${PERIOD_LABEL[k]}</div><div class="rv2 ${f.r[k]>=0?"up":"down"}">${pctN(f.r[k])}</div></div>`).join("")}</div>
+      <div class="cost">ผลตอบแทนต่อปีจาก factsheet${f.perfAt?" ข้อมูล ณ "+fmtDate(f.perfAt):""}</div>`:""}
+    <div class="card" style="padding:4px 14px;margin-top:10px">
+      <div class="kv"><span>บลจ.</span><span>${esc(f.amc)}</span></div>
+      <div class="kv"><span>ค่าใช้จ่ายรวม (TER)</span><span>${f.ter!=null?f.ter+"% ต่อปี":"-"}</span></div>
+      <div class="kv"><span>ค่าบริหารจัดการ</span><span>${f.mf!=null?f.mf+"% ต่อปี":"-"}</span></div>
+      ${f.pol?`<div class="kv"><span>นโยบาย</span><span>${esc(f.pol)}</span></div>`:""}
+      ${f.since?`<div class="kv"><span>จัดตั้ง</span><span>${fmtDate(f.since)}</span></div>`:""}
+      ${f.cls.length>1?`<div class="kv"><span>ชนิดหน่วย</span><span>${f.cls.map(esc).join(", ")}</span></div>`:""}
+    </div>
+    <div class="sec" style="margin-top:14px">🏦 ซื้อได้ที่ (${f.sa.length} ราย)</div>
+    ${(getSettings().myBrokers||[]).length?(mineNames.length?`<div class="banner info" style="cursor:default">✅ ซื้อผ่านช่องทางของคุณได้: ${mineNames.map(esc).join(", ")}</div>`:`<div class="banner warn" style="cursor:default">ไม่มีขายผ่านช่องทางที่คุณตั้งไว้</div>`):""}
+    ${f.sa.length?`<details><summary>รายชื่อผู้สนับสนุนการขายทั้งหมด</summary><div style="margin-top:8px">${f.sa.map(a=>`<div class="agent">${mineNames.includes(FDB.agents[a])?"✅":"•"} ${esc(FDB.agents[a])}</div>`).join("")}</div></details>`:`<div class="muted">ไม่มีข้อมูลผู้ขาย — ติดต่อ บลจ. ${esc(f.amc)} โดยตรง</div>`}
+    ${(f.perf||[]).length?`<details><summary>ผลการดำเนินงานทั้งหมดจาก factsheet</summary><div style="margin-top:8px">${f.perf.map(p=>`<div class="kv"><span>${esc(p[0])} · ${esc(p[1])}</span><span>${p[2]==null?"-":p[2]+"%"}</span></div>`).join("")}</div></details>`:""}
+    ${feeRows?`<details><summary>ค่าธรรมเนียม (${esc(feeRows[0])})</summary><div style="margin-top:8px">${feeRows[1].map(x=>`<div class="kv"><span>${esc(x[0])}</span><span>${x[1]==null?"-":esc(x[1])+" "+esc(x[2]||"")}</span></div>`).join("")}</div></details>`:""}
+    ${f.url&&/^https?:\/\//.test(f.url)?`<a class="btn gho full" style="display:block;text-align:center;margin-top:12px;text-decoration:none" href="${esc(f.url)}" target="_blank" rel="noopener">📄 เปิด factsheet</a>`:""}
+    <div class="row" style="margin-top:10px"><button class="btn gho flex" onclick="showHoldingForm(null,{code:FDB.funds[${i}].c,name:FDB.funds[${i}].th,asset:fAsset(FDB.funds[${i}])})">＋ บันทึกเข้าพอร์ต</button><button class="btn pri flex" onclick="askAboutDB(${i})">🤖 เหมาะกับฉันไหม?</button></div>`);
+}
+function askAboutDB(i){const f=FDB.funds[i];closeSheet();go("ai");setTimeout(()=>chatSend(`กองทุน ${f.c} เหมาะกับพอร์ตและโปรไฟล์ของฉันไหม ถ้าจะซื้อควรซื้อสัดส่วนเท่าไร`),60);}
+
+/* ── ช่องทางซื้อของฉัน ── */
+let brokerSel=null;
+function showBrokerPicker(){
+  if(fdbState!=="ok"){toast(fdbState==="missing"?"ยังไม่มีคลังกองทุน":"กำลังโหลดข้อมูล ลองอีกครั้ง");loadFundDB();return;}
+  brokerSel=new Set(getSettings().myBrokers||[]);
+  showSheet(`<h3>ช่องทางซื้อกองทุนของฉัน</h3><div class="muted" style="margin-bottom:10px">เลือกธนาคาร/โบรกเกอร์/แอปที่คุณมีบัญชีอยู่ แอปจะบอกว่ากองไหนซื้อผ่านช่องทางของคุณได้</div>
+    <input id="bk-q" type="search" placeholder="ค้นชื่อ เช่น กสิกร, ฟินโนมีนา" autocomplete="off">
+    <div id="bk-list" style="margin-top:10px"></div>
+    <button class="btn pri full" style="margin-top:12px" onclick="setSettings({myBrokers:[...brokerSel]});closeSheet();render();toast('✅ บันทึกช่องทางแล้ว')">บันทึก</button>`);
+  const draw=()=>{
+    const q=$("bk-q").value.trim().toLowerCase();
+    const idx=FDB.agents.map((n,i)=>i).filter(i=>!q||FDB.agents[i].toLowerCase().includes(q)).sort((a,b)=>(brokerSel.has(FDB.agents[b])-brokerSel.has(FDB.agents[a]))||FDB.agentCount[b]-FDB.agentCount[a]).slice(0,80);
+    $("bk-list").innerHTML=`<div class="card" style="padding:2px 14px">${idx.map(i=>`<label class="agent check" style="color:var(--text)"><input type="checkbox" data-n="${esc(FDB.agents[i])}" ${brokerSel.has(FDB.agents[i])?"checked":""}><span style="flex:1">${esc(FDB.agents[i])}</span><span class="cost">${FDB.agentCount[i]} กอง</span></label>`).join("")||'<div class="muted" style="padding:10px 0">ไม่พบ</div>'}</div>`;
+    $("bk-list").querySelectorAll("input").forEach(c=>c.onchange=()=>{const n=c.getAttribute("data-n");c.checked?brokerSel.add(n):brokerSel.delete(n);});
+  };
+  $("bk-q").oninput=draw;draw();
+}
+
 /* ════════════ HOLDING FORMS ════════════ */
 function assetOptions(sel){return ASSET_KEYS.map(k=>`<option value="${k}" ${k===sel?"selected":""}>${ASSET[k].label}</option>`).join("");}
 function showHoldingForm(id,preset){
@@ -707,7 +902,8 @@ function showHoldingForm(id,preset){
     <div class="muted" style="margin-bottom:14px">ดูตัวเลขได้จากหน้าพอร์ตในแอปธนาคาร/แอปที่ซื้อ</div>
     <div class="row"><div class="f"><div class="fl">รหัสกองทุน</div><input id="hf-code" value="${esc(v.code||"")}" placeholder="เช่น K-USA" autocapitalize="characters"></div>
       <div style="padding-top:22px"><button class="btn gho" id="hf-look" onclick="lookupInForm()">🔎 ค้นข้อมูล</button></div></div>
-    <div id="hf-info">${inf?viewInfoBox(inf):`<div class="cost" style="margin:-6px 0 10px">ค้นชื่อ ประเภท ความเสี่ยงจากเว็บ ≈ ฿1–3 (เก็บไว้ ${CACHE_DAYS} วัน)</div>`}</div>
+    <div id="hf-sug"></div>
+    <div id="hf-info">${inf?viewInfoBox(inf):`<div class="cost" style="margin:-6px 0 10px">${FDB?"พิมพ์รหัสแล้วเลือกจากคลังกองทุน (ฟรี) · ถ้าไม่พบ กด 🔎 เพื่อค้นจากเว็บ ≈ ฿1–3":`ค้นชื่อ ประเภท ความเสี่ยงจากเว็บ ≈ ฿1–3 (เก็บไว้ ${CACHE_DAYS} วัน)`}</div>`}</div>
     <div class="f"><div class="fl">ชื่อกองทุน (ไม่บังคับ)</div><input id="hf-name" value="${esc(v.name||"")}"></div>
     <div class="f"><div class="fl">ประเภทสินทรัพย์</div><select id="hf-asset">${assetOptions(v.asset||"th_equity")}</select></div>
     <div class="row"><div class="f"><div class="fl">เงินที่ลงไป (บาท)</div><input id="hf-inv" inputmode="decimal" value="${h?h.invested:""}" placeholder="10000"></div>
@@ -715,8 +911,24 @@ function showHoldingForm(id,preset){
     <div class="err" id="hf-err"></div>
     <button class="btn pri full" style="margin-top:8px" onclick="saveHolding('${h?h.id:""}')">${h?"บันทึก":"เพิ่มเข้าพอร์ต"}</button>
     ${h?`<button class="btn dan full" style="margin-top:8px" onclick="deleteHolding('${h.id}')">ลบออกจากพอร์ต</button>`:""}`);
+  const ci=$("hf-code");
+  ci.oninput=()=>{
+    const q=ci.value.trim().toLowerCase(), box=$("hf-sug");
+    if(!FDB||q.length<2){box.innerHTML="";return;}
+    const L=FDB.funds.filter(f=>f.s.includes(q)).sort((a,b)=>(b.c.toLowerCase().startsWith(q))-(a.c.toLowerCase().startsWith(q))||a.c.length-b.c.length).slice(0,6);
+    box.innerHTML=L.length?`<div class="sug">${L.map(f=>`<div onclick="pickFundInForm(${f.i})"><b>${esc(f.c)}</b> · <span class="small">${esc(f.th||f.en)}</span></div>`).join("")}</div>`:"";
+  };
+}
+function pickFundInForm(i){
+  const f=FDB.funds[i];if(!f)return;
+  $("hf-code").value=f.c;$("hf-name").value=f.th||f.en;$("hf-asset").value=fAsset(f);
+  $("hf-sug").innerHTML="";$("hf-info").innerHTML=viewInfoBox(dbInfo(f.c));
 }
 function viewInfoBox(f){
+  if(f&&f.src)return `<div class="ai" style="margin:0 0 12px"><div class="ail">📋 ข้อมูลจาก ก.ล.ต.${f.asOf?" · factsheet "+esc(f.asOf):""}</div>
+    <div class="mdx"><b>${esc(f.name||f.code)}</b>${f.amc?" · "+esc(f.amc):""}<br>${esc(assetLabel(f.asset))}${f.risk?" · เสี่ยงระดับ "+esc(f.risk):""}${f.fee!=null?" · ค่าใช้จ่ายรวม "+esc(f.fee)+"%/ปี":""}${f.return1y!=null?" · 1 ปี "+esc(pctN(f.return1y)):""}${f.taxType?" · "+esc(f.taxType):""}
+    ${f.summary?`<div class="small" style="margin-top:4px">${esc(f.summary)}</div>`:""}</div>
+    ${dbFund(f.code)?`<div class="cost" style="margin-top:4px"><span class="link" onclick="closeSheet();showFundDB(${dbFund(f.code).i})">ดูรายละเอียดและที่ซื้อได้ →</span></div>`:""}</div>`;
   return `<div class="ai" style="margin:0 0 12px"><div class="ail">📋 ข้อมูลกองทุน${f.asOf?" · ณ "+esc(f.asOf):""}</div>
     <div class="mdx"><b>${esc(f.name||f.code)}</b>${f.amc?" · "+esc(f.amc):""}<br>${esc(assetLabel(f.asset))}${f.risk?" · เสี่ยงระดับ "+esc(f.risk):""}${f.fee!=null?" · ค่าธรรมเนียม ~"+esc(f.fee)+"%/ปี":""}${f.return1y!=null?" · 1 ปี "+esc(f.return1y)+"%":""}${f.taxType?" · "+esc(f.taxType):""}
     ${f.summary?`<div class="small" style="margin-top:4px">${esc(f.summary)}</div>`:""}</div>
@@ -740,6 +952,8 @@ asset ต้องเป็นหนึ่งใน: ${ASSET_GUIDE}
 async function lookupInForm(){
   const code=$("hf-code").value.trim();
   if(!code){$("hf-err").textContent="ใส่รหัสกองทุนก่อน";return;}
+  const d=dbFund(code);
+  if(d){pickFundInForm(d.i);toast("พบในคลังกองทุน ก.ล.ต. (ฟรี)");return;}
   const box=$("hf-info"),btn=$("hf-look");btn.disabled=true;
   box.innerHTML=loadingBox("กำลังค้นข้อมูล "+esc(code.toUpperCase())+"...");
   try{
@@ -921,12 +1135,23 @@ async function chatSend(text,forceSearch){
   const search=forceSearch||getSettings().chatSearch;
   const msgs=getChat();msgs.push({role:"user",text});setChat(msgs);
   state.chatBusy=true;if(state.tab!=="ai")state.tab="ai";render();
-  const sys=ADVISOR_BASE+(search?SEARCH_HINT:"\nตอนนี้ไม่ได้เปิดการค้นเว็บ ถ้าคำถามต้องใช้ข้อมูลล่าสุด (ราคา ข่าว ผลตอบแทนล่าสุด) ให้ตอบเท่าที่รู้พร้อมบอกว่าอาจไม่เป็นปัจจุบัน และแนะนำให้เปิดปุ่ม 🔎 ค้นเว็บ")+"\nตอบกระชับ ตรงประเด็น ใช้หัวข้อย่อยหรือ bullet เมื่อช่วยให้อ่านง่าย\n\n"+portfolioContext();
+  const sys=ADVISOR_BASE+(search?SEARCH_HINT:"\nตอนนี้ไม่ได้เปิดการค้นเว็บ ถ้าคำถามต้องใช้ข้อมูลล่าสุด (ราคา ข่าว ผลตอบแทนล่าสุด) ให้ตอบเท่าที่รู้พร้อมบอกว่าอาจไม่เป็นปัจจุบัน และแนะนำให้เปิดปุ่ม 🔎 ค้นเว็บ")+"\nตอบกระชับ ตรงประเด็น ใช้หัวข้อย่อยหรือ bullet เมื่อช่วยให้อ่านง่าย\n\n"+portfolioContext()+chatFundContext(text);
   try{
     const {text:reply,cost}=await callClaude({system:sys,max_tokens:search?2500:1500,search,messages:apiHistory(getChat())});
     const m=getChat();m.push({role:"ai",text:reply||"(ไม่มีคำตอบ)",cost});setChat(m);
   }catch(e){const m=getChat();m.push({role:"ai",text:aiError(e),err:true});setChat(m);}
   state.chatBusy=false;if(state.tab==="ai")render();
+}
+/* ถ้าคำถามพูดถึงรหัสกอง แนบข้อมูลจากคลัง ก.ล.ต. ให้ AI (ฟรี ไม่ต้องค้นเว็บ) */
+function chatFundContext(text){
+  if(!FDB)return "";
+  const seen=new Set(), out=[];
+  (String(text).match(/[A-Za-z][A-Za-z0-9&().\-]{1,30}/g)||[]).forEach(tok=>{
+    const t=tok.replace(/[.)]+$/,"");
+    const f=dbFund(t)||dbFund(tok);
+    if(f&&!seen.has(f.id)&&out.length<6){seen.add(f.id);out.push("- "+fundLine(f));}
+  });
+  return out.length?"\n\n[ข้อมูลกองทุนที่ถูกถามถึง จากคลัง ก.ล.ต.]\n"+out.join("\n"):"";
 }
 function clearChat(){if(!getChat().length)return;if(confirm("ล้างประวัติแชททั้งหมด?")){setChat([]);render();}}
 
@@ -1060,6 +1285,19 @@ function viewSettings(){
     <div class="small" style="margin-top:8px">แอปเตือนเมื่อสัดส่วนเบี่ยงจากเป้าเกิน ±${DRIFT}% ด้วย · แจ้งเตือนจะเห็นเมื่อเปิดแอป</div>
   </div>
 
+  <div class="sec">🏦 ช่องทางซื้อกองทุนของฉัน</div>
+  <div class="card">
+    ${(s.myBrokers||[]).length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${s.myBrokers.map(n=>`<span class="tag p">${esc(n)}</span>`).join("")}</div>`:`<div class="muted" style="margin-bottom:10px">ยังไม่ได้ตั้ง — บอกว่ามีบัญชีกับธนาคาร/โบรกเกอร์ไหน แอปและ AI จะเลือกกองที่ซื้อผ่านช่องทางของคุณได้</div>`}
+    <button class="btn gho full" onclick="showBrokerPicker()">${(s.myBrokers||[]).length?"แก้ไขช่องทาง":"＋ เลือกช่องทางของฉัน"}</button>
+  </div>
+
+  <div class="sec">🗂️ คลังกองทุน (ก.ล.ต.)</div>
+  <div class="card">
+    ${fdbState==="ok"?`<div class="kv"><span>จำนวนกองทุน</span><span>${FDB.funds.length.toLocaleString()} กอง</span></div><div class="kv"><span>ผู้สนับสนุนการขาย</span><span>${FDB.agents.length.toLocaleString()} ราย</span></div><div class="kv"><span>อัปเดตล่าสุด</span><span>${fmtDate((FDB.updated||"").slice(0,10))}</span></div>`
+      :`<div class="muted">${fdbState==="missing"?"ยังไม่มีข้อมูล — รอระบบดึงข้อมูลรอบแรก":"กำลังโหลด..."}</div>`}
+    <div class="small" style="margin-top:8px">อัปเดตอัตโนมัติวันที่ 2 ของทุกเดือน ผ่าน GitHub Actions · ไม่เสียค่า AI</div>
+  </div>
+
   <div class="sec">👤 โปรไฟล์ความเสี่ยง</div>
   <div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:16px;font-weight:900;color:var(--accent2)">${profileLabel()}</div><div class="small">ประเมินเมื่อ ${fmtDate(p.createdAt)}</div></div><button class="mini" onclick="if(confirm('ทำแบบประเมินความเสี่ยงใหม่?')){LS.del(K.profile);setupAns=[];render();}">ประเมินใหม่</button></div></div>
 
@@ -1070,7 +1308,7 @@ function viewSettings(){
   </div>
 
   <div class="sec">ℹ️ เกี่ยวกับ</div>
-  <div class="card"><div class="small" style="line-height:1.7"><b style="color:var(--text)">FundPlan</b> เป็นเครื่องมือติดตามและวางแผนพอร์ต ไม่ใช่ช่องทางซื้อขาย · ข้อมูลกองทุนมาจากการค้นเว็บของ AI ซึ่งอาจคลาดเคลื่อน ควรตรวจกับหนังสือชี้ชวนหรือเว็บ บลจ. ก่อนตัดสินใจ<br><span style="color:var(--amber)">การลงทุนมีความเสี่ยง คำแนะนำจาก AI ใช้ประกอบการตัดสินใจเท่านั้น</span></div></div>
+  <div class="card"><div class="small" style="line-height:1.7"><b style="color:var(--text)">FundPlan</b> เป็นเครื่องมือติดตามและวางแผนพอร์ต ไม่ใช่ช่องทางซื้อขาย · ข้อมูลกองทุนในคลังมาจาก ก.ล.ต. (SEC Open Data) ส่วนข้อมูลที่ AI ค้นจากเว็บอาจคลาดเคลื่อน ควรตรวจกับหนังสือชี้ชวนหรือเว็บ บลจ. ก่อนตัดสินใจ<br><span style="color:var(--amber)">การลงทุนมีความเสี่ยง คำแนะนำจาก AI ใช้ประกอบการตัดสินใจเท่านั้น</span></div></div>
   <button class="btn dan full" onclick="resetAll()">🗑️ ล้างข้อมูลทั้งหมด</button>`;
 }
 function saveKey(){const k=$("api-key").value.trim();LS.set(K.key,k);render();toast(k?"✅ บันทึก API key แล้ว":"ลบ API key แล้ว");}
@@ -1106,6 +1344,7 @@ $("file-img").addEventListener("change",e=>{const f=e.target.files[0];if(f)impor
 $("file-json").addEventListener("change",e=>{const f=e.target.files[0];if(f)importData(f);});
 migrate();
 render();
+loadFundDB();
 </script>
 </body>
 </html>
