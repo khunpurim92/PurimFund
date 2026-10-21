@@ -412,7 +412,7 @@ async function loadFundDB(){
     const j=await r.json();
     const byKey=new Map(), cnt=new Array(j.agents.length).fill(0);
     j.funds.forEach((f,i)=>{
-      f.i=i;f.r=f.r||{};f.b=f.b||{};f.pg=f.pg||{};f.sd=f.sd||{};f.cal=f.cal||{};f.bcal=f.bcal||{};f.cls=f.cls||[];f.sa=f.sa||[];f.ff=f.ff||[];
+      f.i=i;f.r=f.r||{};f.b=f.b||{};f.pg=f.pg||{};f.sd=f.sd||{};f.cal=f.cal||{};f.bcal=f.bcal||{};f.cls=f.cls||[];f.sa=f.sa||[];f.ff=f.ff||[];if(!(f.ter>0))f.ter=null;
       f.s=(f.c+" "+f.th+" "+f.en+" "+f.amc+" "+f.cls.join(" ")).toLowerCase();
       [f.c,...f.cls].forEach(k=>{if(k&&!byKey.has(k.toUpperCase()))byKey.set(k.toUpperCase(),f);});
       f.sa.forEach(a=>cnt[a]++);
@@ -443,6 +443,7 @@ function candidateList(assets,perClass=7){
   const mine=mineIdxSet();
   return assets.map(a=>{
     let L=FDB.funds.filter(f=>f.a===a&&!f.tax&&f.ter!=null&&f.r["1y"]!=null);
+    const seasoned=L.filter(f=>f.r["3y"]!=null);if(seasoned.length>=5)L=seasoned;
     if(mine.size){const m=L.filter(f=>f.sa.some(i=>mine.has(i)));if(m.length>=3)L=m;}
     L.sort((x,y)=>x.ter-y.ter);
     return `[${assetLabel(a)}]\n`+L.slice(0,perClass).map(f=>"- "+fundLine(f)).join("\n");
