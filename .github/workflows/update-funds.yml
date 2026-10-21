@@ -39,6 +39,9 @@ jobs:
             echo "ข้อมูลไม่เปลี่ยน ไม่ต้อง commit"
             exit 0
           fi
-          git commit -m "Update fund data from SEC ($(date -u +%Y-%m-%d))"
-          git pull --rebase --autostash
-          git push
+          ls -la data/
+          echo "::notice title=ขนาดไฟล์::$(du -h data/funds.json | cut -f1) funds.json"
+          git commit -q -m "Update fund data from SEC ($(date -u +%Y-%m-%d))" || { echo "::error title=git commit failed::commit ไม่สำเร็จ"; exit 1; }
+          out=$(git pull --rebase --autostash 2>&1) || { echo "::error title=git pull failed::$(echo "$out" | tail -4 | tr '\n' ' ')"; exit 1; }
+          out=$(git push 2>&1) || { echo "::error title=git push failed::$(echo "$out" | tail -6 | tr '\n' ' ')"; exit 1; }
+          echo "::notice title=บันทึกแล้ว::push ข้อมูลกองทุนขึ้น main เรียบร้อย"

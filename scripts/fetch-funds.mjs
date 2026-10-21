@@ -10,6 +10,7 @@ const OUT_DIR = process.env.OUT_DIR || "data";
 const MIN_GAP_MS = 80; // ก.ล.ต. จำกัด ~5,000 ครั้ง / 5 นาที
 if (!KEY) { console.error("❌ ไม่พบ SEC_API_KEY"); process.exit(1); }
 
+const t0 = Date.now();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let calls = 0, lastAt = 0;
 const errors = [];
@@ -57,6 +58,7 @@ async function all(p, params, label) {
     if (page % 25 === 0) console.log(`  … ${label}: ${out.length} แถว`);
   } while (cursor);
   console.log(`✓ ${label}: ${out.length} แถว (${page} หน้า)`);
+  if (process.env.GITHUB_ACTIONS) console.log(`::notice title=${label}::${out.length} rows, ${page} pages, ${Math.round((Date.now() - t0) / 1000)}s elapsed`);
   return out;
 }
 
@@ -107,7 +109,6 @@ const isBenchmark = (s) => /benchmark|ดัชนีชี้วัด|เก�
 const isFundReturn = (s) => !isBenchmark(s) && /return|ผลตอบแทน|ผลการดำเนินงาน|กองทุน/i.test(s || "") && !/sd|standard deviation|ความผันผวน|ส่วนเบี่ยงเบน|percentile|เปอร์เซ็นไทล์/i.test(s || "");
 
 /* ── main ── */
-const t0 = Date.now();
 const amcs = await all("/v2/fund/general-info/amcs", {}, "บลจ.");
 const profiles = await all("/v2/fund/general-info/profiles", { fund_status: "Registered" }, "รายชื่อกองทุน");
 const specs = await tryAll("/v2/fund/general-info/specifications", {}, "ลักษณะพิเศษ");
@@ -207,3 +208,8 @@ console.log(`\n✅ บันทึก ${out.length} กอง · ผู้ขา
 console.log("coverage:", JSON.stringify(discovery.coverage));
 console.log("asset:", JSON.stringify(discovery.assetClass), "tax:", JSON.stringify(discovery.taxType));
 if (errors.length) console.log("⚠️ errors:", errors);
+if (process.env.GITHUB_ACTIONS) {
+  console.log(`::notice title=สรุป::${out.length} funds, ${agents.length} agents, ${(size / 1024 / 1024).toFixed(2)} MB, ${calls} calls, ${discovery.seconds}s`);
+  console.log(`::notice title=coverage::${JSON.stringify(discovery.coverage)} asset=${JSON.stringify(discovery.assetClass)} tax=${JSON.stringify(discovery.taxType)}`);
+  for (const e of errors) console.log(`::warning title=endpoint error::${e.replace(/\n/g, " ")}`);
+}
