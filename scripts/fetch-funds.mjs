@@ -72,7 +72,7 @@ function classify(f) {
   if (has(f.policy, /mixed|ผสม|balanced|asset\s*allocation/i) || has(t, /กองทุนรวมผสม|mixed fund|balanced fund/i)) return "mixed";
   if (has(f.policy, /fixed\s*income|bond|ตราสารหนี้|debt/i) || has(t, /กองทุนรวมตราสารหนี้|fixed income fund|bond fund/i)) return "bond";
   if (has(f.policy, /equity|ตราสารทุน|หุ้น/i) || has(t, /equity|ตราสารทุน|หุ้น/i)) {
-    return has(t, /foreign|ต่างประเทศ|\bfif\b|global|world|asia|china|japan|india|vietnam|\bus\b|usa|u\.s\.|america|europe|nasdaq|s&p|เวียดนาม|จีน|ญี่ปุ่น|อินเดีย|สหรัฐ|ยุโรป|โลก|เอเชีย/i) ? "global_equity" : "th_equity";
+    return has(t, /feeder|ฟีดเดอร์|foreign|ต่างประเทศ|\bfif\b|global|world|asia|china|japan|india|vietnam|\bus\b|usa|u\.s\.|america|europe|nasdaq|s&p|เวียดนาม|จีน|ญี่ปุ่น|อินเดีย|สหรัฐ|ยุโรป|โลก|เอเชีย/i) ? "global_equity" : "th_equity";
   }
   if (has(t, /fixed income|bond|ตราสารหนี้/i)) return "bond";
   return "other";
@@ -166,15 +166,22 @@ for (const r of R.fees) {
 }
 const ffLatest = {};
 for (const r of R.ffees) if (!ffLatest[r.proj_id] || (r.start_date || "") > ffLatest[r.proj_id]) ffLatest[r.proj_id] = r.start_date || "";
-for (const r of R.ffees) { const f = F.get(r.proj_id); if (f && (r.start_date || "") === ffLatest[r.proj_id] && f.ffees.length < 14) f.ffees.push([cut(r.fee_type_desc, 70), numv(r.rate), numv(r.actual_value)]); }
+for (const r of R.ffees) { const f = F.get(r.proj_id); if (f && (r.start_date || "") === ffLatest[r.proj_id] && f.ffees.length < 10 && !f.ffees.some((x) => x[0] === cut(r.fee_type_desc, 70))) f.ffees.push([cut(r.fee_type_desc, 70), numv(r.rate), numv(r.actual_value)]); }
 for (const r of R.risks) { const f = F.get(r.proj_id); if (f && (!f.rs || (r.start_date || "") >= f.rsAt)) { f.rs = riskNum(r.risk_spectrum); f.rsAt = r.start_date || ""; } }
 const perfLatest = {};
 for (const r of R.perfs) if (!perfLatest[r.proj_id] || (r.start_date || "") > perfLatest[r.proj_id]) perfLatest[r.proj_id] = r.start_date || "";
+/* ผลการดำเนินงาน: แยก กองทุน / ตัวชี้วัด / ค่าเฉลี่ยกลุ่ม / ความผันผวน และผลตอบแทนรายปีปฏิทิน */
+const perfKind = (t) => /ผลตอบแทนกองทุน|fund return/i.test(t) ? "r" : /ผลตอบแทนตัวชี้วัด|benchmark return/i.test(t) ? "b" : /ค่าเฉลี่ยในกลุ่ม|peer/i.test(t) ? "pg" : /ความผันผวนของกองทุน|fund (sd|volatil)/i.test(t) ? "sd" : /ความผันผวนของตัวชี้วัด/i.test(t) ? "bsd" : null;
 for (const r of R.perfs) {
-  const f = F.get(r.proj_id); if (!f || (r.start_date || "") !== perfLatest[r.proj_id] || f.perf.length >= 40) continue;
+  const f = F.get(r.proj_id); if (!f || (r.start_date || "") !== perfLatest[r.proj_id]) continue;
   f.perfAt = r.start_date || "";
-  const t = cut(r.performance_type_desc, 60), pr = cut(r.reference_period, 30);
-  if (!f.perf.some((x) => x[0] === t && x[1] === pr)) f.perf.push([t, pr, numv(r.performance_value)]);
+  const kind = perfKind(r.performance_type_desc || ""), v = numv(r.performance_value), per = String(r.reference_period || "").trim();
+  if (!kind || v == null) continue;
+  f.pf ||= { r: {}, b: {}, pg: {}, sd: {}, cal: {}, bcal: {} };
+  if (/^\d{4}$/.test(per)) { if (kind === "r") f.pf.cal[per] = v; else if (kind === "b") f.pf.bcal[per] = v; continue; }
+  const k = periodKey(per); if (!k) continue;
+  if (kind === "bsd") continue;
+  if (f.pf[kind][k] === undefined) f.pf[kind][k] = v;
 }
 const agentIdx = new Map(), agents = [];
 for (const r of sellers) {
@@ -189,16 +196,18 @@ for (const u of R.urls) { const f = F.get(u.proj_id); if (f && !f.url) f.url = u
 const out = [];
 for (const f of F.values()) {
   const feeRows = f.fees[f.classes[0]] || Object.values(f.fees)[0] || [];
-  const terRow = feeRows.find((x) => isTER(x[0]) && x[1] != null) || f.ffees.find((x) => isTER(x[0]) && (x[2] ?? x[1]) != null);
-  const mgmtRow = feeRows.find((x) => isMgmt(x[0]) && x[1] != null);
-  const ter = terRow ? (terRow.length === 3 && f.ffees.includes(terRow) ? terRow[2] ?? terRow[1] : terRow[1]) : null;
-  const ret = {};
-  for (const [type, period, val] of f.perf) { if (!isFundReturn(type)) continue; const k = periodKey(period); if (k && ret[k] === undefined && val != null) ret[k] = val; }
+  /* ค่าที่เก็บจริงจาก factsheet ก่อน ถ้าไม่มีใช้เพดานจากหนังสือชี้ชวน */
+  const fTer = f.ffees.find((x) => isTER(x[0]) && (x[2] ?? x[1]) != null), fMg = f.ffees.find((x) => isMgmt(x[0]) && (x[2] ?? x[1]) != null);
+  const gTer = feeRows.find((x) => isTER(x[0]) && x[1] != null), gMg = feeRows.find((x) => isMgmt(x[0]) && x[1] != null);
+  const ter = fTer ? fTer[2] ?? fTer[1] : null, terMax = gTer ? gTer[1] : null;
+  const mf = fMg ? fMg[2] ?? fMg[1] : gMg ? gMg[1] : null;
+  const pf = f.pf || { r: {}, b: {}, pg: {}, sd: {}, cal: {}, bcal: {} };
+  const lastYears = (o) => Object.fromEntries(Object.entries(o).sort((a, b) => b[0] - a[0]).slice(0, 6));
   out.push({
     id: f.id, c: f.code, th: cut(f.th, 140), en: cut(f.en, 140), amc: f.amc, cls: f.classes.slice(0, 8),
     a: classify(f), tax: taxType(f), rs: f.rs, pol: cut(f.policy, 60), sp: f.spec.slice(0, 6).map((s) => cut(s, 80)), since: f.since,
-    ter, mf: mgmtRow ? mgmtRow[1] : null, r: ret, perf: f.perf, perfAt: f.perfAt || null,
-    fee: feeRows.length ? { [f.classes[0] || "main"]: feeRows.slice(0, 12).map(([t, r, u]) => [t, r, u]) } : {},
+    ter, terMax, mf, r: pf.r, b: pf.b, pg: pf.pg, sd: pf.sd, cal: lastYears(pf.cal), bcal: lastYears(pf.bcal), perfAt: f.perfAt || null,
+    ff: f.ffees,
     sa: [...f.sa].sort((a, b) => a - b), url: f.url ? cut(f.url, 300) : null,
   });
 }
@@ -210,7 +219,7 @@ const fieldBytes = {}; for (const f of out) for (const [k, v] of Object.entries(
 const discovery = {
   generatedAt: new Date().toISOString(), calls, seconds: secs(), errors: errors.slice(0, 40), sellerMode, entityTypes: etypes,
   totals: { funds: out.length, amcs: amcs.length, agents: agents.length, profiles: profiles.length, ...Object.fromEntries(Object.entries(R).map(([k, v]) => [k, v.length])), sellers: sellers.length },
-  coverage: { withRisk: out.filter((f) => f.rs).length, withTER: out.filter((f) => f.ter != null).length, withMgmt: out.filter((f) => f.mf != null).length, with1y: out.filter((f) => f.r["1y"] != null).length, with5y: out.filter((f) => f.r["5y"] != null).length, withSellers: out.filter((f) => f.sa.length).length, withUrl: out.filter((f) => f.url).length },
+  coverage: { withRisk: out.filter((f) => f.rs).length, withTER: out.filter((f) => f.ter != null).length, withTerMax: out.filter((f) => f.terMax != null).length, withPeer1y: out.filter((f) => f.pg["1y"] != null).length, withMgmt: out.filter((f) => f.mf != null).length, with1y: out.filter((f) => f.r["1y"] != null).length, with5y: out.filter((f) => f.r["5y"] != null).length, withSellers: out.filter((f) => f.sa.length).length, withUrl: out.filter((f) => f.url).length },
   fieldMB: Object.fromEntries(Object.entries(fieldBytes).map(([k, v]) => [k, +(v / 1048576).toFixed(2)]).sort((a, b) => b[1] - a[1])),
   assetClass: count(out.map((f) => f.a)), taxType: count(out.map((f) => f.tax)),
   policy_desc: count(out.map((f) => f.pol)), spec_desc: count(out.flatMap((f) => f.sp)),

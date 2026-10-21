@@ -168,6 +168,10 @@ details[open] summary::after{content:" ▴";}
 .agent{display:flex;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--border);font-size:13px;}
 .agent:first-child{border-top:none;}
 .link{color:var(--accent2);font-weight:700;cursor:pointer;text-decoration:none;}
+.ptab{width:100%;border-collapse:collapse;font-size:13px;}
+.ptab th{font-size:11.5px;color:var(--text2);font-weight:700;text-align:right;padding:6px 4px;}
+.ptab td{text-align:right;padding:7px 4px;border-top:1px solid var(--border);white-space:nowrap;}
+.ptab td:first-child,.ptab th:first-child{text-align:left;color:var(--text2);font-weight:600;}
 
 /* nav */
 .nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:440px;background:var(--glass);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-top:1px solid var(--border);display:flex;padding:8px 8px calc(8px + env(safe-area-inset-bottom));z-index:30;}
@@ -250,7 +254,7 @@ const LS={
 const K={
   key:"fp_key",profile:"fp_profile",goals:"fp_goals",dca:"fp_dca",tax:"fp_tax",
   holdings:"fp2_holdings",info:"fp2_fundinfo",settings:"fp2_settings",usage:"fp2_usage",
-  check:"fp2_check",chat:"fp2_chat",starter:"fp2_starter",migrated:"fp2_migrated"
+  check:"fp2_check",chat:"fp2_chat",starter:"fp2_starter",migrated:"fp2_migrated",sellers:"fp2_sellers"
 };
 const DEFAULT_SETTINGS={theme:"dark",budget:200,reviewMonths:6,lastReview:null,lossAlert:10,taxRate:10,chatSearch:false,checkSearch:false,myBrokers:[]};
 const getSettings=()=>({...DEFAULT_SETTINGS,...LS.get(K.settings,{})});
@@ -408,7 +412,7 @@ async function loadFundDB(){
     const j=await r.json();
     const byKey=new Map(), cnt=new Array(j.agents.length).fill(0);
     j.funds.forEach((f,i)=>{
-      f.i=i;f.r=f.r||{};f.cls=f.cls||[];f.sa=f.sa||[];
+      f.i=i;f.r=f.r||{};f.b=f.b||{};f.pg=f.pg||{};f.sd=f.sd||{};f.cal=f.cal||{};f.bcal=f.bcal||{};f.cls=f.cls||[];f.sa=f.sa||[];f.ff=f.ff||[];
       f.s=(f.c+" "+f.th+" "+f.en+" "+f.amc+" "+f.cls.join(" ")).toLowerCase();
       [f.c,...f.cls].forEach(k=>{if(k&&!byKey.has(k.toUpperCase()))byKey.set(k.toUpperCase(),f);});
       f.sa.forEach(a=>cnt[a]++);
@@ -431,7 +435,7 @@ function dbInfo(code){
 }
 function fundLine(f){
   const mine=myAgentsFor(f);
-  return `${f.c} (${f.th||f.en}) · บลจ.${f.amc} · ${assetLabel(f.a)}${f.pol?" ("+f.pol+")":""} · เสี่ยง ${riskTxt(f.rs)} · ค่าใช้จ่ายรวม ${f.ter??"-"}%/ปี · ผลตอบแทน 1ปี ${pctN(f.r["1y"])} 3ปี ${pctN(f.r["3y"])} 5ปี ${pctN(f.r["5y"])}${f.perfAt?" (factsheet "+f.perfAt+")":""}${f.tax?" · กองลดหย่อน "+f.tax:""} · ผู้ขาย ${f.sa.length} ราย${(getSettings().myBrokers||[]).length?(mine.length?" · ซื้อผ่านช่องทางผู้ใช้ได้ ("+mine.slice(0,2).join(", ")+")":" · ไม่มีขายผ่านช่องทางของผู้ใช้"):""}`;
+  return `${f.c} (${f.th||f.en}) · บลจ.${f.amc} · ${assetLabel(f.a)}${f.pol?" ("+f.pol+")":""} · เสี่ยง ${riskTxt(f.rs)} · ค่าใช้จ่ายรวมจริง ${f.ter??"-"}%/ปี${f.terMax!=null?" (เพดาน "+f.terMax+"%)":""} · ผลตอบแทนต่อปี 1ปี ${pctN(f.r["1y"])}${f.pg["1y"]!=null?" [เฉลี่ยกลุ่ม "+pctN(f.pg["1y"])+"]":""} 3ปี ${pctN(f.r["3y"])} 5ปี ${pctN(f.r["5y"])}${f.b["5y"]!=null?" [ตัวชี้วัด 5ปี "+pctN(f.b["5y"])+"]":""}${f.sd["1y"]!=null?" · ความผันผวน 1ปี "+f.sd["1y"]+"%":""}${f.perfAt?" (factsheet "+f.perfAt+")":""}${f.tax?" · กองลดหย่อน "+f.tax:""}${sellerCache(f.c)?" · ช่องทางขาย (AI ค้นไว้): "+sellerCache(f.c).channels.slice(0,8).join(", "):""}${FDB.agents.length?" · ผู้ขาย "+f.sa.length+" ราย"+((getSettings().myBrokers||[]).length?(mine.length?" · ซื้อผ่านช่องทางผู้ใช้ได้ ("+mine.slice(0,2).join(", ")+")":" · ไม่มีขายผ่านช่องทางของผู้ใช้"):""):""}`;
 }
 /* รายชื่อกองตัวเลือกจากคลัง ให้ AI เลือก (ไม่ต้องค้นเว็บ) */
 function candidateList(assets,perClass=7){
@@ -798,7 +802,7 @@ function viewFunds(){
       ${sel("ft",FSTATE.t,[["all","กองทั่วไป+ลดหย่อน"],["none","เฉพาะกองทั่วไป"],["SSF","SSF"],["RMF","RMF"],["ThaiESG","ThaiESG"],["ThaiESGX","ThaiESGX"]])}
       ${sel("fs",FSTATE.sort,[["r1y","ผลตอบแทน 1 ปี สูงสุด"],["r3y","ผลตอบแทน 3 ปี สูงสุด"],["r5y","ผลตอบแทน 5 ปี สูงสุด"],["ter","ค่าใช้จ่ายต่ำสุด"],["name","ชื่อ ก–ฮ / A–Z"]])}
     </div>
-    ${mb.length?`<label class="check" style="margin-bottom:10px"><input type="checkbox" id="fmine" ${FSTATE.mine?"checked":""}> เฉพาะกองที่ซื้อผ่านช่องทางของฉันได้ (${mb.length} ช่องทาง)</label>`
+    ${!FDB.agents.length?"":mb.length?`<label class="check" style="margin-bottom:10px"><input type="checkbox" id="fmine" ${FSTATE.mine?"checked":""}> เฉพาะกองที่ซื้อผ่านช่องทางของฉันได้ (${mb.length} ช่องทาง)</label>`
       :`<div class="small" style="margin-bottom:10px">💡 บอกว่าคุณมีบัญชีกับธนาคาร/โบรกเกอร์ไหน แล้วกรองเฉพาะกองที่ซื้อได้ · <span class="link" onclick="showBrokerPicker()">ตั้งค่าช่องทางของฉัน</span></div>`}
     <div id="flist">${renderFundList()}</div>
     <div class="small" style="text-align:center;margin-top:12px">ข้อมูลจาก ก.ล.ต. อัปเดต ${fmtDate((FDB.updated||"").slice(0,10))} · ${FDB.funds.length.toLocaleString()} กอง · ผลตอบแทนในอดีตไม่ได้รับประกันอนาคต</div>`;
@@ -832,7 +836,7 @@ function renderFundList(){
         <div style="flex:1;min-width:0"><div class="hn">${esc(f.c)} ${canBuy?'<span class="tag g">✓ ช่องทางของฉัน</span>':""}</div>
           <div class="hs" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.th||f.en)}</div>
           <div style="margin-top:4px;display:flex;gap:5px;flex-wrap:wrap"><span class="tag">${assetLabel(f.a)}</span>${f.rs?`<span class="tag ${f.rs<=3?"g":f.rs<=5?"a":"r"}">เสี่ยง ${riskTxt(f.rs)}</span>`:""}${f.tax?`<span class="tag t">${f.tax}</span>`:""}</div></div>
-        <div style="text-align:right;flex-shrink:0"><div class="hv ${v==null?"":v>=0?"up":"down"}">${pctN(v)}</div><div class="hs">${key.replace("y"," ปี")}</div>${f.ter!=null?`<div class="hs">ค่าใช้จ่าย ${f.ter}%</div>`:""}</div>
+        <div style="text-align:right;flex-shrink:0"><div class="hv ${v==null?"":v>=0?"up":"down"}">${pctN(v)}</div><div class="hs">${key.replace("y"," ปี")}</div>${f.ter!=null?`<div class="hs">ค่าใช้จ่าย ${f.ter}%</div>`:f.terMax!=null?`<div class="hs">ค่าใช้จ่าย ≤${f.terMax}%</div>`:""}</div>
       </div>`;}).join("")}</div>
     ${L.length>FSTATE.limit?`<button class="btn gho full" style="margin-top:8px" onclick="FSTATE.limit+=40;$('flist').innerHTML=renderFundList()">แสดงเพิ่ม (${(L.length-FSTATE.limit).toLocaleString()} กอง)</button>`:""}`;
 }
@@ -849,29 +853,68 @@ function showFundDB(i){
   const f=FDB.funds[i];if(!f)return;
   const mineNames=myAgentsFor(f), held=getHoldings().find(h=>h.code===f.c||f.cls.includes(h.code));
   const rets=PERIOD_ORDER.filter(k=>f.r[k]!=null);
-  const feeRows=Object.entries(f.fee||{})[0];
+  const years=Object.keys(f.cal).sort((a,b)=>b-a);
+  const cell=v=>v==null?'<td class="small">-</td>':`<td class="${v>=0?"up":"down"}" style="font-weight:800">${pctN(v)}</td>`;
   showSheet(`<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
       <div class="fic" style="width:48px;height:48px;font-size:18px;background:${assetColor(f.a)}26;color:${assetColor(f.a)}">${esc((f.c||"?")[0])}</div>
       <div style="flex:1;min-width:0"><div style="font-size:19px;font-weight:900;word-break:break-all">${esc(f.c)}</div><div class="small">${esc(f.th||f.en)}</div></div></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="tag">${assetLabel(f.a)}</span>${f.rs?`<span class="tag ${f.rs<=3?"g":f.rs<=5?"a":"r"}">ความเสี่ยงระดับ ${riskTxt(f.rs)}</span>`:""}${f.tax?`<span class="tag t">ลดหย่อนภาษี ${f.tax}</span>`:""}${held?'<span class="tag p">ในพอร์ตของคุณ</span>':""}</div>
-    ${rets.length?`<div class="ret">${rets.map(k=>`<div><div class="rl">${PERIOD_LABEL[k]}</div><div class="rv2 ${f.r[k]>=0?"up":"down"}">${pctN(f.r[k])}</div></div>`).join("")}</div>
-      <div class="cost">ผลตอบแทนต่อปีจาก factsheet${f.perfAt?" ข้อมูล ณ "+fmtDate(f.perfAt):""}</div>`:""}
+    ${rets.length?`<div class="sec" style="margin-top:14px">📈 ผลตอบแทน (% ต่อปี)</div>
+      <div class="card" style="padding:8px 12px;overflow-x:auto"><table class="ptab"><tr><th></th><th>กองทุน</th><th>ตัวชี้วัด</th><th>เฉลี่ยกลุ่ม</th></tr>
+      ${rets.map(k=>`<tr><td>${PERIOD_LABEL[k]}</td>${cell(f.r[k])}${cell(f.b[k])}${cell(f.pg[k])}</tr>`).join("")}</table>
+      ${f.sd["1y"]!=null?`<div class="small" style="margin-top:6px">ความผันผวน (SD) 1 ปี ${f.sd["1y"]}%${f.sd["5y"]!=null?" · 5 ปี "+f.sd["5y"]+"%":""}</div>`:""}
+      <div class="cost">จาก factsheet${f.perfAt?" ณ "+fmtDate(f.perfAt):""} · ผลการดำเนินงานในอดีตไม่ได้รับประกันอนาคต</div></div>`:""}
+    ${years.length?`<details><summary>ผลตอบแทนรายปีปฏิทิน</summary><table class="ptab" style="margin-top:8px"><tr><th></th><th>กองทุน</th><th>ตัวชี้วัด</th></tr>${years.map(y=>`<tr><td>${+y+543}</td>${cell(f.cal[y])}${cell(f.bcal[y])}</tr>`).join("")}</table></details>`:""}
     <div class="card" style="padding:4px 14px;margin-top:10px">
       <div class="kv"><span>บลจ.</span><span>${esc(f.amc)}</span></div>
-      <div class="kv"><span>ค่าใช้จ่ายรวม (TER)</span><span>${f.ter!=null?f.ter+"% ต่อปี":"-"}</span></div>
+      <div class="kv"><span>ค่าใช้จ่ายรวมที่เก็บจริง</span><span>${f.ter!=null?f.ter+"% ต่อปี":"-"}</span></div>
+      ${f.terMax!=null?`<div class="kv"><span>เพดานตามหนังสือชี้ชวน</span><span>${f.terMax}% ต่อปี</span></div>`:""}
       <div class="kv"><span>ค่าบริหารจัดการ</span><span>${f.mf!=null?f.mf+"% ต่อปี":"-"}</span></div>
       ${f.pol?`<div class="kv"><span>นโยบาย</span><span>${esc(f.pol)}</span></div>`:""}
       ${f.since?`<div class="kv"><span>จัดตั้ง</span><span>${fmtDate(f.since)}</span></div>`:""}
       ${f.cls.length>1?`<div class="kv"><span>ชนิดหน่วย</span><span>${f.cls.map(esc).join(", ")}</span></div>`:""}
     </div>
-    <div class="sec" style="margin-top:14px">🏦 ซื้อได้ที่ (${f.sa.length} ราย)</div>
-    ${(getSettings().myBrokers||[]).length?(mineNames.length?`<div class="banner info" style="cursor:default">✅ ซื้อผ่านช่องทางของคุณได้: ${mineNames.map(esc).join(", ")}</div>`:`<div class="banner warn" style="cursor:default">ไม่มีขายผ่านช่องทางที่คุณตั้งไว้</div>`):""}
-    ${f.sa.length?`<details><summary>รายชื่อผู้สนับสนุนการขายทั้งหมด</summary><div style="margin-top:8px">${f.sa.map(a=>`<div class="agent">${mineNames.includes(FDB.agents[a])?"✅":"•"} ${esc(FDB.agents[a])}</div>`).join("")}</div></details>`:`<div class="muted">ไม่มีข้อมูลผู้ขาย — ติดต่อ บลจ. ${esc(f.amc)} โดยตรง</div>`}
-    ${(f.perf||[]).length?`<details><summary>ผลการดำเนินงานทั้งหมดจาก factsheet</summary><div style="margin-top:8px">${f.perf.map(p=>`<div class="kv"><span>${esc(p[0])} · ${esc(p[1])}</span><span>${p[2]==null?"-":p[2]+"%"}</span></div>`).join("")}</div></details>`:""}
-    ${feeRows?`<details><summary>ค่าธรรมเนียม (${esc(feeRows[0])})</summary><div style="margin-top:8px">${feeRows[1].map(x=>`<div class="kv"><span>${esc(x[0])}</span><span>${x[1]==null?"-":esc(x[1])+" "+esc(x[2]||"")}</span></div>`).join("")}</div></details>`:""}
+    ${f.ff.length?`<details><summary>ค่าธรรมเนียมจาก factsheet</summary><div style="margin-top:8px">${f.ff.map(x=>`<div class="kv"><span>${esc(x[0])}</span><span>${x[2]!=null?esc(x[2])+"%":x[1]!=null?"≤"+esc(x[1])+"%":"-"}</span></div>`).join("")}</div></details>`:""}
+    <div class="sec" style="margin-top:14px">🏦 ซื้อได้ที่ไหน</div>
+    <div id="fd-sellers">${viewSellers(f)}</div>
     ${f.url&&/^https?:\/\//.test(f.url)?`<a class="btn gho full" style="display:block;text-align:center;margin-top:12px;text-decoration:none" href="${esc(f.url)}" target="_blank" rel="noopener">📄 เปิด factsheet</a>`:""}
     <div class="row" style="margin-top:10px"><button class="btn gho flex" onclick="showHoldingForm(null,{code:FDB.funds[${i}].c,name:FDB.funds[${i}].th,asset:fAsset(FDB.funds[${i}])})">＋ บันทึกเข้าพอร์ต</button><button class="btn pri flex" onclick="askAboutDB(${i})">🤖 เหมาะกับฉันไหม?</button></div>`);
 }
+/* ── ช่องทางที่ขาย: ใช้ข้อมูลผู้ขายในคลัง (ถ้ามี) ไม่งั้นให้ AI ค้นทีละกองแล้วจำไว้ 30 วัน ── */
+const SELLER_KEY="fp2_sellers";
+const normB=s=>String(s||"").toLowerCase().replace(/\(มหาชน\)|จำกัด|บริษัท|หลักทรัพย์|ธนาคาร|บล\.|บลจ\.|ธ\.|securities|bank|public|company|limited|co\.|ltd\.?|pcl\.?|[\s.,()\-]/g,"");
+const sameB=(a,b)=>{a=normB(a);b=normB(b);return !!a&&!!b&&(a.includes(b)||b.includes(a));};
+function sellerCache(code){const c=LS.get(SELLER_KEY,{})[code];return c&&daysSince(c.date)<30?c:null;}
+function viewSellers(f){
+  const mb=getSettings().myBrokers||[];
+  if(FDB.agents.length&&f.sa.length){
+    const mineNames=myAgentsFor(f);
+    return (mb.length?(mineNames.length?`<div class="banner info" style="cursor:default">✅ ซื้อผ่านช่องทางของคุณได้: ${mineNames.map(esc).join(", ")}</div>`:`<div class="banner warn" style="cursor:default">ไม่มีขายผ่านช่องทางที่คุณตั้งไว้</div>`):"")+
+      `<details><summary>ผู้สนับสนุนการขายทั้งหมด (${f.sa.length} ราย)</summary><div style="margin-top:8px">${f.sa.map(a=>`<div class="agent">${mineNames.includes(FDB.agents[a])?"✅":"•"} ${esc(FDB.agents[a])}</div>`).join("")}</div></details>`;
+  }
+  const c=sellerCache(f.c);
+  let h=`<div class="muted" style="margin-bottom:10px">ซื้อตรงกับ <b style="color:var(--text)">${esc(f.amc)}</b> ได้เสมอ ผ่านเว็บ/แอปของ บลจ. หรือธนาคารในเครือ</div>`;
+  if(!c)return h+`<button class="btn gho full" id="fd-sbtn" onclick="lookupSellers(${f.i})">🔎 ให้ AI ค้นว่าซื้อได้ที่ไหนบ้าง <span class="cost">≈ ฿1–3</span></button>`;
+  const match=c.channels.filter(ch=>mb.some(m=>sameB(m,ch)));
+  return h+(mb.length?(match.length?`<div class="banner info" style="cursor:default">✅ น่าจะซื้อผ่านช่องทางของคุณได้: ${match.map(esc).join(", ")}</div>`:`<div class="banner warn" style="cursor:default">ไม่พบช่องทางของคุณในรายชื่อที่ค้นได้</div>`):"")+
+    `<div style="display:flex;gap:6px;flex-wrap:wrap">${c.channels.map(ch=>`<span class="tag ${match.includes(ch)?"g":""}">${esc(ch)}</span>`).join("")}</div>
+    ${c.note?`<div class="small" style="margin-top:8px">${esc(c.note)}</div>`:""}
+    <div class="cost" style="margin-top:6px">AI ค้นเมื่อ ${fmtDate(c.date)} · ควรยืนยันในแอปที่จะซื้อ · <span class="link" onclick="lookupSellers(${f.i},true)">ค้นใหม่</span></div>`;
+}
+async function lookupSellers(i,force){
+  const f=FDB.funds[i];if(!f)return;
+  if(!force&&sellerCache(f.c)){$("fd-sellers").innerHTML=viewSellers(f);return;}
+  const box=$("fd-sellers");box.innerHTML=loadingBox("กำลังค้นช่องทางที่ขาย "+esc(f.c)+"...");
+  const sys=`ค้นจากเว็บว่ากองทุนรวมไทยรหัส "${f.c}" (${f.th||f.en}, บลจ.${f.amc}) ซื้อได้ผ่านช่องทางใดบ้าง เช่น ธนาคาร บริษัทหลักทรัพย์ แพลตฟอร์ม/แอปซื้อขายกองทุน ใช้การค้นไม่เกิน 2 ครั้ง ใส่เฉพาะช่องทางที่พบหลักฐาน ใช้ชื่อสั้นที่คนทั่วไปเรียก
+ตอบเป็น JSON ภายในแท็ก <JSON></JSON> เท่านั้น: {"channels":["ชื่อช่องทาง"],"note":"ข้อสังเกตสั้นๆ 1 ประโยค ถ้ามี"}`;
+  try{
+    const {text,cost}=await callClaude({system:sys,max_tokens:1200,search:true,messages:[{role:"user",content:"กองทุน "+f.c}]});
+    const j=extractJSON(text);
+    const all=LS.get(SELLER_KEY,{});all[f.c]={channels:(j.channels||[]).map(x=>String(x).trim()).filter(Boolean).slice(0,30),note:j.note||"",date:todayStr()};LS.set(SELLER_KEY,all);
+    box.innerHTML=viewSellers(f)+`<div class="cost">${costTxt(cost)}</div>`;
+  }catch(e){box.innerHTML=errBox(e);}
+}
+
 function askAboutDB(i){const f=FDB.funds[i];closeSheet();go("ai");setTimeout(()=>chatSend(`กองทุน ${f.c} เหมาะกับพอร์ตและโปรไฟล์ของฉันไหม ถ้าจะซื้อควรซื้อสัดส่วนเท่าไร`),60);}
 
 /* ── ช่องทางซื้อของฉัน ── */
@@ -879,6 +922,14 @@ let brokerSel=null;
 function showBrokerPicker(){
   if(fdbState!=="ok"){toast(fdbState==="missing"?"ยังไม่มีคลังกองทุน":"กำลังโหลดข้อมูล ลองอีกครั้ง");loadFundDB();return;}
   brokerSel=new Set(getSettings().myBrokers||[]);
+  if(!FDB.agents.length){
+    const seen=[...new Set(Object.values(LS.get(SELLER_KEY,{})).flatMap(c=>c.channels||[]))].filter(n=>!brokerSel.has(n)).slice(0,24);
+    showSheet(`<h3>ช่องทางซื้อกองทุนของฉัน</h3><div class="muted" style="margin-bottom:10px">พิมพ์ชื่อธนาคาร/โบรกเกอร์/แอปที่คุณมีบัญชี บรรทัดละ 1 ช่องทาง AI จะใช้ข้อมูลนี้ตอนแนะนำกองทุน</div>
+      <textarea id="bk-txt" rows="5" placeholder="เช่น&#10;ธนาคารกสิกรไทย&#10;ชื่อแอปซื้อกองทุนที่ใช้">${esc([...brokerSel].join("\n"))}</textarea>
+      ${seen.length?`<div class="small" style="margin:10px 0 6px">ช่องทางที่เคยพบจากการค้น แตะเพื่อเพิ่ม</div><div style="display:flex;gap:6px;flex-wrap:wrap">${seen.map(n=>`<span class="tag" style="cursor:pointer" onclick="const t=$('bk-txt');t.value=(t.value.trim()?t.value.trim()+'\\n':'')+this.textContent;this.remove()">${esc(n)}</span>`).join("")}</div>`:""}
+      <button class="btn pri full" style="margin-top:12px" onclick="setSettings({myBrokers:[...new Set($('bk-txt').value.split(/\\n|,/).map(x=>x.trim()).filter(Boolean))]});closeSheet();render();toast('✅ บันทึกช่องทางแล้ว')">บันทึก</button>`);
+    return;
+  }
   showSheet(`<h3>ช่องทางซื้อกองทุนของฉัน</h3><div class="muted" style="margin-bottom:10px">เลือกธนาคาร/โบรกเกอร์/แอปที่คุณมีบัญชีอยู่ แอปจะบอกว่ากองไหนซื้อผ่านช่องทางของคุณได้</div>
     <input id="bk-q" type="search" placeholder="ค้นชื่อ เช่น กสิกร, ฟินโนมีนา" autocomplete="off">
     <div id="bk-list" style="margin-top:10px"></div>
@@ -1312,7 +1363,7 @@ function viewSettings(){
   <button class="btn dan full" onclick="resetAll()">🗑️ ล้างข้อมูลทั้งหมด</button>`;
 }
 function saveKey(){const k=$("api-key").value.trim();LS.set(K.key,k);render();toast(k?"✅ บันทึก API key แล้ว":"ลบ API key แล้ว");}
-const BACKUP_KEYS=["profile","holdings","info","goals","dca","tax","settings","check","starter","chat"];
+const BACKUP_KEYS=["profile","holdings","info","goals","dca","tax","settings","check","starter","chat","sellers"];
 function exportData(){
   const data={};BACKUP_KEYS.forEach(k=>data[k]=LS.get(K[k],null));
   downloadFile("fundplan-backup-"+todayStr()+".json",JSON.stringify({app:"FundPlan",version:2,exportedAt:new Date().toISOString(),data},null,1),"application/json");
