@@ -192,9 +192,12 @@ details[open] summary::after{content:" ▴";}
 /* sheet */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;display:flex;align-items:flex-end;justify-content:center;animation:fade .2s;}
 @keyframes fade{from{opacity:0;}to{opacity:1;}}
-.sheet{width:100%;max-width:440px;background:var(--bg2);border-radius:22px 22px 0 0;border:1px solid var(--border);border-bottom:none;padding:16px 16px calc(22px + env(safe-area-inset-bottom));max-height:92vh;overflow-y:auto;animation:up .26s cubic-bezier(.16,1,.3,1);}
+.sheet{width:100%;max-width:440px;background:var(--bg2);border-radius:22px 22px 0 0;border:1px solid var(--border);border-bottom:none;padding:16px 16px calc(22px + env(safe-area-inset-bottom));max-height:calc(100vh - env(safe-area-inset-top) - 44px);max-height:calc(100dvh - env(safe-area-inset-top) - 44px);overflow-y:auto;animation:up .26s cubic-bezier(.16,1,.3,1);}
 @keyframes up{from{transform:translateY(100%);}to{transform:translateY(0);}}
-.handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px;}
+.handle{width:40px;height:5px;background:var(--text3);opacity:.5;border-radius:3px;}
+.sheethead{position:sticky;top:-16px;z-index:5;margin:-16px -16px 10px;padding:10px 16px 8px;background:var(--bg2);display:flex;align-items:center;justify-content:center;min-height:46px;touch-action:none;cursor:grab;}
+.sheetx{position:absolute;right:12px;top:7px;width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:16px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.sheet.drag{transition:none;}
 .sheet h3{font-size:18px;font-weight:900;margin-bottom:12px;}
 
 /* chat */
@@ -572,8 +575,31 @@ function render(){
 }
 function go(tab){state.tab=tab;render();window.scrollTo(0,0);}
 function toggleTheme(){setSettings({theme:getSettings().theme==="light"?"dark":"light"});render();}
-function showSheet(html){closeSheet();const o=document.createElement("div");o.className="overlay";o.id="overlay";o.innerHTML=`<div class="sheet" id="sheet"><div class="handle"></div>${html}</div>`;o.addEventListener("click",e=>{if(e.target===o)closeSheet();});document.body.appendChild(o);}
-function closeSheet(){const o=$("overlay");if(o)o.remove();}
+/* ── bottom sheet: ปิดได้ด้วยปุ่ม ✕ · แตะพื้นหลัง · ปัดลง · ปุ่มย้อนกลับ · Esc ── */
+let sheetHist=false, skipPop=0, pendingBack=null;
+function showSheet(html){
+  let o=$("overlay");
+  if(!o){
+    o=document.createElement("div");o.className="overlay";o.id="overlay";
+    o.addEventListener("click",e=>{if(e.target===o)closeSheet();});
+    document.body.appendChild(o);document.body.style.overflow="hidden";
+    if(pendingBack){clearTimeout(pendingBack);pendingBack=null;}   /* ปิดแล้วเปิดใหม่ทันที: ใช้ประวัติเดิมต่อ */
+    else{try{history.pushState({sheet:1},"");sheetHist=true;}catch{}}
+  }
+  o.innerHTML=`<div class="sheet" id="sheet"><div class="sheethead" id="sheethead"><div class="handle"></div><button class="sheetx" aria-label="ปิด" onclick="closeSheet()">✕</button></div>${html}</div>`;
+  const sh=$("sheet"),hd=$("sheethead");let y0=null,dy=0;
+  hd.addEventListener("touchstart",e=>{y0=e.touches[0].clientY;dy=0;sh.classList.add("drag");},{passive:true});
+  hd.addEventListener("touchmove",e=>{if(y0==null)return;dy=Math.max(0,e.touches[0].clientY-y0);sh.style.transform=`translateY(${dy}px)`;},{passive:true});
+  hd.addEventListener("touchend",()=>{sh.classList.remove("drag");if(dy>70)closeSheet();else sh.style.transform="";y0=null;});
+}
+function closeSheet(fromPop){
+  const o=$("overlay");if(!o)return;
+  o.remove();document.body.style.overflow="";
+  if(fromPop===true){sheetHist=false;return;}
+  if(sheetHist&&!pendingBack)pendingBack=setTimeout(()=>{pendingBack=null;if(!sheetHist)return;sheetHist=false;skipPop=1;try{history.back();}catch{skipPop=0;}setTimeout(()=>{skipPop=0;},800);},0);
+}
+window.addEventListener("popstate",()=>{if(skipPop>0){skipPop--;return;}if($("overlay")){sheetHist=false;closeSheet(true);}});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&$("overlay"))closeSheet();});
 function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),2400);}
 function downloadFile(name,text,type){const b=new Blob([text],{type});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);}
 
