@@ -307,6 +307,11 @@ details[open] summary::after{content:" ▴";}
 .kv:first-child{border-top:none;}
 .kv span:first-child{color:var(--text2);}
 .kv span:last-child{font-weight:600;text-align:right;}
+/* update bar */
+.updbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(78px + env(safe-area-inset-bottom));width:calc(100% - 28px);max-width:412px;background:var(--hero);border:1px solid var(--hero-line);color:#fff;border-radius:14px;padding:10px 10px 10px 14px;display:flex;align-items:center;gap:10px;z-index:90;box-shadow:var(--shadow);font-size:13.5px;font-weight:600;animation:up .3s cubic-bezier(.16,1,.3,1);}
+.updbar span{flex:1;min-width:0;}
+.updbar button{border:none;border-radius:9px;padding:8px 13px;font-weight:600;font-size:13px;cursor:pointer;}
+.updbar .go{background:var(--hero-gold,#EFCB7E);color:#1B1405;} .updbar .x{background:none;color:#fff;font-size:18px;padding:4px 8px;}
 .imp{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:12px;margin-bottom:10px;}
 </style>
 </head>
@@ -322,6 +327,7 @@ details[open] summary::after{content:" ▴";}
    ข้อมูลเก็บในเบราว์เซอร์ (localStorage) · AI ผ่าน Claude API
 ═══════════════════════════════════════════════════════ */
 
+const APP_VERSION="2026.11.17.1"; // เปลี่ยนทุกครั้งที่อัปไฟล์ใหม่ — ใช้ตรวจว่ามีเวอร์ชันใหม่
 const MODEL="claude-sonnet-5-5";
 const PRICE={in:2,out:10,search:0.01};   // USD ต่อ 1M token / ต่อการค้น 1 ครั้ง
 const THB_RATE=35;                          // บาทต่อดอลลาร์ (ประมาณ)
@@ -1811,6 +1817,14 @@ function viewSettings(){
     <div class="row"><button class="btn gho flex" onclick="exportData()">⬇️ ส่งออก</button><button class="btn gho flex" onclick="const f=$('file-json');f.value='';f.click()">⬆️ นำเข้า</button></div>
   </div>
 
+  <div class="sec"><span class="ic">🔄</span>เวอร์ชันแอป</div>
+  <div class="card">
+    <div class="kv"><span>ตอนนี้ใช้เวอร์ชัน</span><span>${APP_VERSION}</span></div>
+    <button class="btn pri full" style="margin-top:10px" onclick="checkForUpdate(true)">🔄 ตรวจหาเวอร์ชันใหม่</button>
+    <button class="btn gho full" style="margin-top:8px" onclick="if(confirm('ล้างแคชแล้วโหลดแอปใหม่? ข้อมูลพอร์ตของคุณไม่หาย'))hardReload()">ล้างแคชแล้วโหลดใหม่ (ถ้าติดเวอร์ชันเก่า)</button>
+    <div class="small" style="margin-top:8px">ข้อมูลพอร์ต เป้าหมาย และการตั้งค่าไม่หาย ล้างเฉพาะตัวแอปที่เครื่องจำไว้</div>
+  </div>
+
   <div class="sec"><span class="ic">ℹ️</span>เกี่ยวกับ</div>
   <div class="card"><div class="small" style="line-height:1.7"><b style="color:var(--text)">FundPlan</b> เป็นเครื่องมือติดตามและวางแผนพอร์ต ไม่ใช่ช่องทางซื้อขาย · ข้อมูลกองทุนในคลังมาจาก ก.ล.ต. (SEC Open Data) ส่วนข้อมูลที่ AI ค้นจากเว็บอาจคลาดเคลื่อน ควรตรวจกับหนังสือชี้ชวนหรือเว็บ บลจ. ก่อนตัดสินใจ<br><span style="color:var(--amber)">การลงทุนมีความเสี่ยง คำแนะนำจาก AI ใช้ประกอบการตัดสินใจเท่านั้น</span></div></div>
   <button class="btn dan full" onclick="resetAll()">🗑️ ล้างข้อมูลทั้งหมด</button>`;
@@ -1846,6 +1860,42 @@ function downloadICS(){
 /* ════════════ BOOT ════════════ */
 $("file-img").addEventListener("change",e=>{const f=e.target.files[0];if(f)importScreenshot(f);});
 $("file-json").addEventListener("change",e=>{const f=e.target.files[0];if(f)importData(f);});
+/* ════════════ ตรวจเวอร์ชันใหม่ ════════════
+   แอปหน้าจอโฮมของ iPhone มัก "ปลุก" หน้าเดิมแทนการโหลดใหม่ จึงตรวจตอนเปิดและตอนกลับเข้าแอปด้วย */
+let lastVerCheck=0;
+async function checkForUpdate(manual){
+  if(typeof fetch!=="function"||location.protocol==="file:")return null;
+  if(!manual&&Date.now()-lastVerCheck<10*60*1000)return null;
+  lastVerCheck=Date.now();
+  try{
+    const r=await fetch("./index.html?fresh="+Date.now(),{cache:"no-store"});
+    if(!r.ok)throw new Error(r.status);
+    const m=(await r.text()).match(/const APP_VERSION="([^"]+)"/);
+    const remote=m?m[1]:null;
+    if(remote&&remote!==APP_VERSION){showUpdateBar(remote);return "new";}
+    if(manual)toast("ใช้เวอร์ชันล่าสุดแล้ว ("+APP_VERSION+")");
+    return "latest";
+  }catch(e){if(manual)toast(navigator.onLine===false?"ออฟไลน์อยู่ ตรวจเวอร์ชันไม่ได้":"ตรวจเวอร์ชันไม่ได้ ลองใหม่อีกครั้ง");return null;}
+}
+function showUpdateBar(ver){
+  if($("updbar"))return;
+  const b=document.createElement("div");b.id="updbar";b.className="updbar";b.setAttribute("role","status");
+  b.innerHTML=`<span>✨ มี FundPlan เวอร์ชันใหม่ (${esc(ver)})</span><button class="go" onclick="loadFresh()">อัปเดต</button><button class="x" aria-label="ปิด" onclick="this.parentNode.remove()">✕</button>`;
+  document.body.appendChild(b);
+}
+/* โหลดผ่าน URL ใหม่ทุกครั้ง เพื่อข้ามหน้าเก่าที่เครื่องจำไว้ */
+function loadFresh(){location.replace(location.pathname+"?v="+Date.now());}
+async function hardReload(){
+  try{if(typeof caches!=="undefined"){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)));}}catch(_){}
+  try{if(navigator.serviceWorker){const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.unregister()));}}catch(_){}
+  loadFresh();
+}
+if(/[?&]v=\d/.test(location.search)){try{history.replaceState(history.state,"",location.pathname+location.hash);}catch(_){}}
+if(location.protocol!=="file:"){
+  setTimeout(()=>checkForUpdate(false),3000);
+  document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")checkForUpdate(false);});
+}
+
 migrate();
 migrate3();
 render();
