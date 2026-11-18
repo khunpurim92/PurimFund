@@ -8,6 +8,10 @@
 <meta name="apple-mobile-web-app-title" content="FundPlan">
 <meta name="theme-color" content="#0A0F1E">
 <title>FundPlan — ผู้ช่วยลงทุนกองทุน</title>
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="48x48" href="favicon-48.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -52,9 +56,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 
 /* top bar */
 .topbar{position:sticky;top:0;z-index:20;background:var(--glass);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom:1px solid var(--border);padding:calc(10px + env(safe-area-inset-top)) 16px 10px;display:flex;align-items:center;gap:11px;}
-.brand{width:36px;height:36px;border-radius:11px;background:var(--hero);border:1px solid var(--hero-line);display:flex;align-items:flex-end;justify-content:center;gap:3px;padding:8px 7px;flex-shrink:0;}
-.brand i{display:block;width:4.5px;border-radius:1.5px;background:var(--hero-gold);}
-.brand i:nth-child(1){height:7px;opacity:.55;}.brand i:nth-child(2){height:12px;opacity:.78;}.brand i:nth-child(3){height:18px;}
+.brand{width:38px;height:38px;border-radius:11px;flex-shrink:0;display:block;object-fit:cover;box-shadow:0 0 0 1px var(--hero-line);}
 .topbar .tt{font-size:17px;font-weight:700;line-height:1.25;}
 .topbar .ts{font-size:12px;color:var(--text3);line-height:1.3;}
 .topbar .sp{flex:1;}
@@ -263,9 +265,7 @@ details[open] summary::after{content:" ▴";}
 .empty .et{font-size:18px;font-weight:700;margin-bottom:6px;}
 .empty .es{font-size:14px;color:var(--text2);line-height:1.65;}
 .setup{padding:40px 20px 40px;}
-.setup .brand{width:56px;height:56px;border-radius:17px;gap:5px;padding:13px 11px;margin:0 auto 14px;}
-.setup .brand i{width:7px;border-radius:2px;}
-.setup .brand i:nth-child(1){height:11px;}.setup .brand i:nth-child(2){height:19px;}.setup .brand i:nth-child(3){height:28px;}
+.setup .brand{width:84px;height:84px;border-radius:22px;margin:0 auto 14px;box-shadow:0 0 0 1px var(--hero-line),var(--shadow);}
 .opt{display:block;width:100%;text-align:left;background:var(--card);border:1px solid var(--border);border-radius:13px;padding:14px;font-size:14.5px;color:var(--text);font-weight:500;margin-bottom:10px;cursor:pointer;}
 .opt:active{border-color:var(--accent);}
 
@@ -327,7 +327,7 @@ details[open] summary::after{content:" ▴";}
    ข้อมูลเก็บในเบราว์เซอร์ (localStorage) · AI ผ่าน Claude API
 ═══════════════════════════════════════════════════════ */
 
-const APP_VERSION="2026.11.17.1"; // เปลี่ยนทุกครั้งที่อัปไฟล์ใหม่ — ใช้ตรวจว่ามีเวอร์ชันใหม่
+const APP_VERSION="2026.11.18.1"; // เปลี่ยนทุกครั้งที่อัปไฟล์ใหม่ — ใช้ตรวจว่ามีเวอร์ชันใหม่
 const MODEL="claude-sonnet-5-5";
 const PRICE={in:2,out:10,search:0.01};   // USD ต่อ 1M token / ต่อการค้น 1 ครั้ง
 const THB_RATE=35;                          // บาทต่อดอลลาร์ (ประมาณ)
@@ -846,7 +846,7 @@ function render(){
   if(!getProfile()){app.innerHTML=`<div class="setup" id="setup"></div>`;renderSetup(0);return;}
   const[t,sub]=TITLES[state.tab];
   app.innerHTML=`
-    <div class="topbar"><div class="brand" aria-hidden="true"><i></i><i></i><i></i></div><div><div class="tt">${t}</div><div class="ts">${sub}</div></div><div class="sp"></div>
+    <div class="topbar"><img class="brand" src="icon-192.png" alt="" aria-hidden="true"><div><div class="tt">${t}</div><div class="ts">${sub}</div></div><div class="sp"></div>
       ${state.tab==="ai"?`<button class="iconbtn" title="ล้างแชท" onclick="clearChat()">🗑️</button>`:""}
       <button class="iconbtn" title="สลับธีม" onclick="toggleTheme()">${getSettings().theme==="light"?"🌙":"☀️"}</button>
     </div>
@@ -897,7 +897,7 @@ const RISK_Q=[
 let setupAns=[];
 function renderSetup(step){
   const box=$("setup");
-  const head=`<div style="text-align:center;margin-bottom:26px"><div class="brand" aria-hidden="true"><i></i><i></i><i></i></div><div style="font-size:26px;font-weight:700;letter-spacing:-.3px">FundPlan</div><div class="muted" style="margin-top:6px">ผู้ช่วยลงทุนกองทุน ที่ให้ AI ช่วยดูพอร์ตและเตือนให้ปรับสมดุล</div></div>`;
+  const head=`<div style="text-align:center;margin-bottom:26px"><img class="brand" src="icon-192.png" alt="" aria-hidden="true"><div style="font-size:26px;font-weight:700;letter-spacing:-.3px">FundPlan</div><div class="muted" style="margin-top:6px">ผู้ช่วยลงทุนกองทุน ที่ให้ AI ช่วยดูพอร์ตและเตือนให้ปรับสมดุล</div></div>`;
   if(step<RISK_Q.length){
     const q=RISK_Q[step];
     box.innerHTML=head+`<div class="lbl" style="margin-bottom:8px">ประเมินความเสี่ยง · ข้อ ${step+1}/${RISK_Q.length}</div>
